@@ -1,0 +1,56 @@
+# Hermes 공개 프로필 설정 예시 (실제 키 없음). 2026-11-10 Hermes Agent v0.22.2에서 실제로 띄워 확인한 키 기준.
+# 프로필 = 별도 Hermes 홈(`hermes profile create kquantpub --no-skills --no-alias`) → 그 프로필 폴더의 config.yaml에 넣는다.
+# 대화 규칙은 저장소 hermes/SOUL.md를 프로필 폴더의 SOUL.md로 복사해 넣는다(Hermes v0.22는 MCP instructions를 모델에 전달하지 않음).
+# API 서버 설정(비밀값 포함)은 같은 폴더의 .env에 둔다(아래 주석). 배포 후 반드시 `kquant check-hermes`로 확인한다.
+
+model:                        # 프로필마다 모델·제공자를 따로 정한다(예: 기본 프로필과 같은 값)
+  default: <모델 이름>
+  provider: <제공자>
+
+gateway:
+  standalone: true            # 기본 프로필의 멀티플렉스 게이트웨이가 이 프로필을 가져가지 않게(별도 포트로 운영)
+
+mcp_servers:
+  kquant-public:
+    # 운영 구성(2026-11-10 결정 D5): Hermes 공개 게이트웨이와 kquant를 같은 컨테이너에 두고 MCP는 하위 프로세스로 띄운다
+    # (hermes/compose.public.example.yaml). docker 소켓이 필요 없다. KQUANT_DATA_DIR 등은 컨테이너 환경변수로 준다.
+    command: /opt/kquant-venv/bin/kquant-mcp
+    # 로컬 검증(2026-11-10, Hermes를 호스트에서 돌릴 때만): command: docker,
+    #   args: ["compose", "--project-directory", "<저장소>", "run", "--rm", "-T", "mcp"] — 게이트웨이 사용자에게 docker 소켓 권한
+    #   (사실상 호스트 root)이 필요하므로 공개 운영에는 쓰지 않는다.
+    connect_timeout: 120
+    timeout: 180
+    tools:
+      include: [list_fields, screen, strategy_options, strategy_report, recommend]
+      resources: false
+      prompts: false
+
+platform_toolsets:            # 플랫폼별 허용 toolset. MCP 서버는 서버 이름(kquant-public)으로 적는다
+  api_server: [kquant-public]
+  # telegram: [kquant-public]
+  # `skills`는 넣지 않는다(2026-11-10 결정): skill_view·skills_list와 함께 skill_manage(스킬 생성·수정)가 묶여 있어
+  # 따로 끌 수 없고, 대화 후 자동 검토가 공개 프로필의 스킬을 실제로 고쳤다. 공개 사용자의 대화가 다음 사용자의 지시문을 바꾸는 경로다.
+
+# 공개 사용자 대화로 프로필 상태가 바뀌지 않게(스킬·메모리 자동 쓰기 차단, 사용자 간 정보 섞임 방지)
+curator:
+  enabled: false
+skills:
+  write_approval: true        # 혹시 스킬 쓰기가 생기면 적용 전에 운영자 승인 대기
+memory:
+  memory_enabled: false
+  user_profile_enabled: false
+
+# 같은 프로필 폴더의 .env (값은 서버 secret으로만):
+#   API_SERVER_ENABLED=true
+#   API_SERVER_HOST=127.0.0.1      # 호스트 직접 실행 시. 컨테이너 안에서는 0.0.0.0으로 두고 호스트 쪽 공개를 127.0.0.1:8643으로 제한
+#   API_SERVER_PORT=8643           # 공개 프로필 고정 포트(8642는 운영 프로필). check-hermes 기본값과 같다
+#   API_SERVER_KEY=<임의의 긴 값>   # check-hermes는 HERMES_API_KEY 환경변수로 이 값을 쓴다
+# compose `mcp` 서비스의 DART_API_KEY는 저장소 옆 .env에서 읽는다(Hermes 설정에 넣지 않는다).
+
+# 공개 채널 주의(spec §1):
+#   - Telegram은 기본이 미등록 사용자 거부. TELEGRAM_ALLOW_ALL_USERS는 이 공개 프로필에서만 켠다.
+#   - 관리자 Web Dashboard(:9119)는 loopback 바인딩을 유지한다.
+#   - 공개 컨테이너에 docker 소켓(/var/run/docker.sock)을 마운트하지 않는다(사실상 호스트 root, docs/spec/system-spec.md §10.2).
+
+# 운영 작업(데이터 갱신·그리드 계산)은 공개 프로필에 두지 않는다. 운영자 프로필의 cron이나 OS 스케줄러로:
+#   docker compose run --rm kquant update-prices && docker compose run --rm kquant run-grid

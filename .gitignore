@@ -1,0 +1,44 @@
+# 저장소(= 서비스)에는 새 시스템(src/kquant)의 코드와 산출물만 둔다.
+
+# legacy 코드와 legacy 비교 작업은 로컬에서만 다룬다
+국내퀀트코드/
+local/
+
+# dataset/: 원본(marcap, DART txt/zip 5GB+)·legacy 산출물은 로컬 보관.
+# 서비스 환경에서 다시 만들 수 없는 새 산출물만 올린다.
+dataset/*
+!dataset/fin/
+dataset/fin/*
+!dataset/fin/long.parquet
+!dataset/fin/conflicts.parquet
+!dataset/fin/quality.parquet
+!dataset/prices/
+dataset/prices/*
+!dataset/prices/adj_events.parquet
+
+data/
+*.xlsx
+*.pkl
+*.zip
+.env
+.env.*
+!.env.example
+
+# Python
+.venv*/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# 산출물
+reports_out/
+*.log
+.idea/
+.vscode/
+
+# 공개 Hermes 컨테이너의 프로필 홈(세션 DB·.env 비밀값 포함, D5 초안)
+hermes/hermes-public-home/

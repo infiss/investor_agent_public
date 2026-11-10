@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "kquant-public": {
+      "command": "uv",
+      "args": ["run", "kquant-mcp"],
+      "env": {"PYTHONUTF8": "1"}
+    }
+  }
+}

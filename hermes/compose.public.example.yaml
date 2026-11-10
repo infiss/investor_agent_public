@@ -1,0 +1,38 @@
+# 공개 Hermes 게이트웨이 + kquant MCP 컨테이너 — 초안(2026-11-10 결정 D5, 미빌드·미검증. 클라우드 배포 준비 때 검증한다).
+# Hermes와 kquant를 한 컨테이너에 두고 MCP 서버는 Hermes가 하위 프로세스(stdio)로 띄운다 → docker 소켓이 필요 없다.
+#
+# 반드시 지킬 조건(tests/redteam/test_docker_static.py가 이 파일로 확인한다):
+#   1. docker 소켓(/var/run/docker.sock)을 마운트하지 않는다(사실상 호스트 root).
+#   2. network_mode: host를 쓰지 않는다(Hermes 공식 compose의 기본값). 포트는 127.0.0.1:8643만 연다(외부는 앞단 TLS 프록시).
+#   3. ~/.hermes 전체를 마운트하지 않는다(운영 프로필까지 들어온다). 공개 프로필 홈만 붙인다.
+#   4. 데이터(dataset)는 읽기 전용, 쓰기는 리포트 폴더와 공개 프로필 홈뿐.
+#   5. 데이터 갱신·그리드 계산은 저장소 compose.yaml의 `kquant` 서비스(운영자)로 따로 돌린다.
+#
+# 사용(초안):  docker compose -f hermes/compose.public.example.yaml build
+#              docker compose -f hermes/compose.public.example.yaml up -d
+#              uv run kquant check-hermes      # 서버 안에서 http://127.0.0.1:8643 점검, 종료 코드 2면 배포하지 않음
+# 공개 프로필 홈(./hermes-public-home)에는 hermes/config.example.yaml을 채운 config.yaml, hermes/SOUL.md, .env를 둔다.
+
+services:
+  hermes-public:
+    build:
+      context: ..
+      dockerfile: hermes/Dockerfile.public
+    image: kquant-hermes-public:draft
+    restart: unless-stopped
+    command: ["gateway", "run"]
+    ports:
+      - "127.0.0.1:8643:8643"       # 공개 프로필 API 서버(컨테이너 안 API_SERVER_HOST=0.0.0.0)
+    environment:
+      KQUANT_DATA_DIR: /data
+      KQUANT_REPORT_DIR: /reports
+      # KQUANT_REPORT_BASE_URL: https://reports.example.com/kquant
+      DART_API_KEY: ${DART_API_KEY:-}  # 추천의 공시 조회. 비밀값은 compose 옆 .env(서버 secret)에서 치환
+    volumes:
+      - ../dataset:/data:ro
+      - ../dataset/reports:/reports
+      - ./hermes-public-home:/opt/data   # 공개 프로필 홈만(Hermes 이미지의 HERMES_HOME)
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    # read_only: true  — Hermes가 루트 파일시스템 읽기 전용에서 도는지 미확인. 검증 후 켠다.

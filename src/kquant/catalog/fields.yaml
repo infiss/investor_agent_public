@@ -1,0 +1,295 @@
+# 조건 검색 카탈로그 — 검색 가능한 항목의 유일한 정의 (spec §6.1).
+# kind: flow(기간 값) | stock(시점 값) | price(시세) | ratio(파생 지표)
+# periods: quarter(분기 3개월) | ttm(최근 12개월) | annual(직전 연간) | latest(최신 시점)
+# default_period: null이면 기간을 지정하지 않은 조건은 실행하지 않고 되묻는다.
+# 재무 항목: item = kquant.fin.snapshot 컬럼의 항목명. 비율: 계산은 kquant.catalog.features의 RATIOS.
+
+# ---- 손익·현금흐름 (flow) ----
+- id: revenue
+  label: 매출액
+  aliases: [매출, 수익, sales]
+  kind: flow
+  unit: KRW
+  item: 매출액
+  periods: [quarter, ttm, annual]
+  default_period: null
+- id: gross_profit
+  label: 매출총이익
+  aliases: [매출이익]
+  kind: flow
+  unit: KRW
+  item: 매출총이익
+  periods: [quarter, ttm, annual]
+  default_period: null
+- id: operating_income
+  label: 영업이익
+  aliases: [영업익, operating profit]
+  kind: flow
+  unit: KRW
+  item: 영업이익
+  periods: [quarter, ttm, annual]
+  default_period: null
+- id: pretax_income
+  label: 법인세차감전순이익
+  aliases: [세전이익]
+  kind: flow
+  unit: KRW
+  item: 법인세차감전순이익
+  periods: [quarter, ttm, annual]
+  default_period: null
+- id: net_income
+  label: 당기순이익(지배주주)
+  aliases: [순이익, 당기순이익, 지배순이익, net income]
+  kind: flow
+  unit: KRW
+  item: 지배당기순이익
+  periods: [quarter, ttm, annual]
+  default_period: null
+  description: 지배기업 소유주 귀속 당기순이익. 해당 줄이 없는 기업은 당기순이익.
+- id: operating_cash_flow
+  label: 영업활동현금흐름
+  aliases: [영업현금흐름, OCF]
+  kind: flow
+  unit: KRW
+  item: 영업활동현금흐름
+  periods: [quarter, ttm, annual]
+  default_period: null
+- id: capex
+  label: 유형자산취득
+  aliases: [설비투자, CAPEX]
+  kind: flow
+  unit: KRW
+  item: 유형자산취득
+  periods: [quarter, ttm, annual]
+  default_period: null
+- id: dividends_paid
+  label: 배당금지급
+  aliases: [배당금]
+  kind: flow
+  unit: KRW
+  item: 배당금지급
+  periods: [quarter, ttm, annual]
+  default_period: null
+  description: 현금흐름표의 배당금 지급액.
+
+# ---- 재무상태 (stock) ----
+- id: total_assets
+  label: 자산총계
+  aliases: [자산, 총자산]
+  kind: stock
+  unit: KRW
+  item: 자산총계
+  periods: [latest]
+  default_period: latest
+- id: total_liabilities
+  label: 부채총계
+  aliases: [부채, 총부채]
+  kind: stock
+  unit: KRW
+  item: 부채총계
+  periods: [latest]
+  default_period: latest
+- id: total_equity
+  label: 자본총계(지배주주)
+  aliases: [자본, 자기자본, 순자산]
+  kind: stock
+  unit: KRW
+  item: 지배자본총계
+  periods: [latest]
+  default_period: latest
+  description: 자본총계에서 비지배지분을 뺀 값.
+- id: current_assets
+  label: 유동자산
+  kind: stock
+  unit: KRW
+  item: 유동자산
+  periods: [latest]
+  default_period: latest
+- id: cash
+  label: 현금및현금성자산
+  aliases: [현금]
+  kind: stock
+  unit: KRW
+  item: 현금및현금성자산
+  periods: [latest]
+  default_period: latest
+- id: inventory
+  label: 재고자산
+  aliases: [재고]
+  kind: stock
+  unit: KRW
+  item: 재고자산
+  periods: [latest]
+  default_period: latest
+- id: receivables
+  label: 매출채권
+  kind: stock
+  unit: KRW
+  item: 매출채권
+  periods: [latest]
+  default_period: latest
+- id: ppe
+  label: 유형자산
+  kind: stock
+  unit: KRW
+  item: 유형자산
+  periods: [latest]
+  default_period: latest
+- id: intangibles
+  label: 무형자산
+  kind: stock
+  unit: KRW
+  item: 무형자산
+  periods: [latest]
+  default_period: latest
+- id: short_term_debt
+  label: 단기차입금
+  kind: stock
+  unit: KRW
+  item: 단기차입금
+  periods: [latest]
+  default_period: latest
+- id: long_term_debt
+  label: 장기차입금
+  kind: stock
+  unit: KRW
+  item: 장기차입금
+  periods: [latest]
+  default_period: latest
+- id: retained_earnings
+  label: 이익잉여금
+  kind: stock
+  unit: KRW
+  item: 이익잉여금
+  periods: [latest]
+  default_period: latest
+- id: capital_stock
+  label: 자본금
+  kind: stock
+  unit: KRW
+  item: 자본금
+  periods: [latest]
+  default_period: latest
+
+# ---- 시세 (price) ----
+- id: market_cap
+  label: 시가총액
+  aliases: [시총, market cap]
+  kind: price
+  unit: KRW
+  column: Marcap
+  periods: [latest]
+  default_period: latest
+- id: close
+  label: 종가
+  aliases: [주가, 가격]
+  kind: price
+  unit: KRW
+  column: Close
+  periods: [latest]
+  default_period: latest
+  description: 기준일 종가(수정 전 원가격).
+- id: trading_value
+  label: 거래대금
+  aliases: [거래액]
+  kind: price
+  unit: KRW
+  column: Amount
+  periods: [latest]
+  default_period: latest
+  description: 기준일 하루 거래대금.
+
+# ---- 파생 지표 (ratio) ----
+- id: per
+  label: PER
+  aliases: [주가수익비율]
+  kind: ratio
+  unit: 배
+  periods: [ttm, annual]
+  default_period: ttm
+  formula: 시가총액 / 당기순이익(지배주주). 순이익 ≤ 0이면 값 없음.
+- id: pbr
+  label: PBR
+  aliases: [주가순자산비율]
+  kind: ratio
+  unit: 배
+  periods: [latest]
+  default_period: latest
+  formula: 시가총액 / 자본총계(지배주주). 자본 ≤ 0이면 값 없음.
+- id: psr
+  label: PSR
+  aliases: [주가매출비율]
+  kind: ratio
+  unit: 배
+  periods: [ttm, annual]
+  default_period: ttm
+  formula: 시가총액 / 매출액. 매출 ≤ 0이면 값 없음.
+- id: pcr
+  label: PCR
+  aliases: [주가현금흐름비율]
+  kind: ratio
+  unit: 배
+  periods: [ttm, annual]
+  default_period: ttm
+  formula: 시가총액 / 영업활동현금흐름. 현금흐름 ≤ 0이면 값 없음.
+- id: roe
+  label: ROE
+  aliases: [자기자본이익률]
+  kind: ratio
+  unit: "%"
+  periods: [ttm]
+  default_period: ttm
+  formula: 당기순이익(지배주주, TTM) / 자본총계(지배주주, 최신) × 100. 자본 ≤ 0이면 값 없음.
+- id: roa
+  label: ROA
+  aliases: [총자산이익률]
+  kind: ratio
+  unit: "%"
+  periods: [ttm]
+  default_period: ttm
+  formula: 당기순이익(지배주주, TTM) / 자산총계(최신) × 100.
+- id: debt_ratio
+  label: 부채비율
+  kind: ratio
+  unit: "%"
+  periods: [latest]
+  default_period: latest
+  formula: 부채총계 / 자본총계 × 100. 자본 ≤ 0이면 값 없음.
+- id: operating_margin
+  label: 영업이익률
+  kind: ratio
+  unit: "%"
+  periods: [quarter, ttm, annual]
+  default_period: null
+  formula: 영업이익 / 매출액 × 100. 매출 ≤ 0이면 값 없음.
+- id: net_margin
+  label: 순이익률
+  kind: ratio
+  unit: "%"
+  periods: [quarter, ttm, annual]
+  default_period: null
+  formula: 당기순이익(지배주주) / 매출액 × 100. 매출 ≤ 0이면 값 없음.
+- id: revenue_growth
+  label: 매출액 성장률(전년 동기 대비)
+  aliases: [매출 성장률, 매출증가율]
+  kind: ratio
+  unit: "%"
+  periods: [quarter, ttm]
+  default_period: null
+  formula: (이번 값 − 전년 동기 값) / 전년 동기 값 × 100. 전년 동기 값 ≤ 0이면 값 없음.
+- id: operating_income_growth
+  label: 영업이익 성장률(전년 동기 대비)
+  aliases: [영업이익 증가율]
+  kind: ratio
+  unit: "%"
+  periods: [quarter, ttm]
+  default_period: null
+  formula: (이번 값 − 전년 동기 값) / 전년 동기 값 × 100. 전년 동기 값 ≤ 0이면 값 없음.
+- id: net_income_growth
+  label: 순이익 성장률(전년 동기 대비)
+  aliases: [순이익 증가율]
+  kind: ratio
+  unit: "%"
+  periods: [quarter, ttm]
+  default_period: null
+  formula: (이번 값 − 전년 동기 값) / 전년 동기 값 × 100. 전년 동기 값 ≤ 0이면 값 없음.

@@ -1,0 +1,16 @@
+# 이미지에는 코드(src/, tests/)와 의존성 정의만 넣는다. 데이터·비밀값·legacy는 넣지 않는다.
+.git
+.venv*
+**/.env
+**/.env.*
+dataset
+data
+reports_out
+local
+국내퀀트코드
+docs
+hermes
+**/__pycache__
+.pytest_cache
+.ruff_cache
+*.log

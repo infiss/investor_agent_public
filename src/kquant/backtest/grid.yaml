@@ -1,0 +1,13 @@
+# 백테스트 그리드 (spec §8, 2026-11-10 결정). 키 = 전략 × 종목 수 × 규모 × 시총 하한 × 일정 = 3 × 3 × 3 × 1 × 2 = 54.
+strategies: [value, salesmt, momentum]
+combinations: false            # true면 비어 있지 않은 모든 조합, false면 단일 전략만
+n: [5, 10, 20]
+size:
+  - {size: all}
+  - {size: small, cut: 0.3}    # 시총 하위 30%
+  - {size: large, cut: 0.7}    # 시총 상위 30%(백분위 ≥ 0.7)
+min_marcap: [0]
+schedule: [annual, quarterly]
+initial_capital: 100000000
+buy_cost_rate: 0.0             # 매수 비용 비율
+sell_cost_rate: 0.002          # 매도 비용 비율 = 증권거래세(2026년 KOSPI 0.05%+농특세 0.15%, KOSDAQ 0.20%). 수수료·슬리피지 미반영
