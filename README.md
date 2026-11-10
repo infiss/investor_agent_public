@@ -124,4 +124,4 @@ uv run ruff check src tests
 자세한 설계와 결정 근거는 [`docs/spec/system-spec.md`](docs/spec/system-spec.md).
 
 ## 라이선스
-코드는 [MIT License](LICENSE). 함께 배포하는 데이터(`dataset/`)는 위 "데이터"의 각 출처 이용 조건을 따릅니다.
+함께 배포하는 데이터(`dataset/`)는 위 "데이터"의 각 출처 이용 조건을 따릅니다.
