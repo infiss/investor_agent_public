@@ -74,3 +74,29 @@ def _parse_str(text: str, unit: str) -> float:
     if pos != len(s):
         raise AmountError(f"해석할 수 없는 값: {text!r}")
     return -total if neg else total
+
+
+def format_value(x, unit: str) -> str | None:
+    """사람이 읽는 표시 문자열(parse_number의 역방향). 응답에 원값과 함께 넣어 LLM이 단위를 직접 환산하지 않게 한다.
+
+    2026-11-13 Hermes E2E: 무료 모델이 원 단위 값을 조·억으로 바꾸며 10배 틀렸다(시총 55.95조 → "559.5조").
+    KRW: 1조 이상 "55.95조", 1억 이상 "1,862억", 그 아래 "5,000만"·"3,500원". %·배: 소수 둘째 자리.
+    """
+    if x is None:
+        return None
+    try:
+        x = float(x)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(x):
+        return None
+    if unit != "KRW":
+        return f"{x:,.2f}{'%' if unit == '%' else unit}"
+    sign, a = ("-" if x < 0 else ""), abs(x)
+    if a >= 10**12:
+        return f"{sign}{a / 10**12:,.2f}조"
+    if a >= 10**8:
+        return f"{sign}{a / 10**8:,.0f}억"
+    if a >= 10**4:
+        return f"{sign}{a / 10**4:,.0f}만"
+    return f"{sign}{a:,.0f}원"

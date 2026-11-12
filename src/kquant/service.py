@@ -20,7 +20,7 @@ from pathlib import Path
 import pandas as pd
 
 from kquant.backtest.schedule import FIRST_YEAR
-from kquant.catalog.amount import AmountError, parse_number
+from kquant.catalog.amount import AmountError, format_value, parse_number
 from kquant.catalog.catalog import list_fields
 from kquant.catalog.screen import screen as _screen
 from kquant.context import DataContext
@@ -214,7 +214,9 @@ def strategy_report(ctx: DataContext, params) -> dict:
     return _ok(report=link, key=key, params=kparams, start_year=sy, end_year=ey, data_date=meta["latest_date"],
                summary={"strategy": _round(clean(summary["strategy"])),
                         "benchmarks": {k: _round(clean(v)) for k, v in summary["benchmarks"].items()}},
-               notes=[(f"summary의 start는 수익률 계산의 기준일입니다. 시작 연도가 {FIRST_YEAR}년보다 뒤면 직전 연도 마지막 "
+               display={"strategy": _summary_display(clean(summary["strategy"])),
+                        "benchmarks": {k: _summary_display(clean(v)) for k, v in summary["benchmarks"].items()}},
+               notes=["사용자에게는 display의 문자열(예: CAGR '10.91%')을 그대로 보이세요. summary의 수익률은 비율(0.1091 = 10.91%)입니다.",(f"summary의 start는 수익률 계산의 기준일입니다. 시작 연도가 {FIRST_YEAR}년보다 뒤면 직전 연도 마지막 "
                        f"거래일이고, {FIRST_YEAR}년이면 첫 매수일입니다.")])
 
 
@@ -226,6 +228,22 @@ def _report_code_digest() -> str:
     for rel in ("service.py", "reports/html.py", "reports/metrics.py"):
         h.update((root / rel).read_bytes())
     return h.hexdigest()[:12]
+
+
+PCT_KEYS = ("total_return", "cagr", "volatility", "mdd", "positive_years", "worst_year")
+X_KEYS = ("sharpe", "sortino", "calmar")
+
+
+def _summary_display(d: dict) -> dict:
+    """요약 지표의 표시 문자열(비율 → %). LLM이 0.109를 0.11%로 옮기는 식의 환산 실수를 막는다(2026-11-13)."""
+    out = {k: d[k] for k in ("start", "end", "worst_year_label") if k in d}
+    for k in PCT_KEYS:
+        if _f(d.get(k)) is not None:
+            out[k] = f"{d[k] * 100:,.2f}%"
+    for k in X_KEYS:
+        if _f(d.get(k)) is not None:
+            out[k] = f"{d[k]:,.2f}"
+    return out
 
 
 def _round(d: dict) -> dict:
@@ -274,11 +292,15 @@ def recommend(ctx: DataContext, params) -> dict:
             },
             "strategy_ranks": {s: int(getattr(p, f"rank_{s}")) for s in strategies},
         }
+        row["display"] = {"market_cap": format_value(row["market_cap"], "KRW"),
+                          **{k: format_value(v, "%" if k.endswith("_pct") else "배")
+                             for k, v in row["metrics"].items()}}
         if disc:
             cc = corp.get(p.symbol)
             row["disclosures"] = recent_disclosures(cc) if cc else {"items": [], "error": "공시 고유번호 정보 없음"}
         rows.append(row)
     return _ok(as_of=str(d.date()), strategies=list(strategies), universe_size=sel.universe_size, picks=rows,
-               notes=["순위는 기준일까지 공개된 재무·가격만으로 계산했습니다.",
+               notes=["값을 사용자에게 보일 때는 각 종목 display의 문자열(예: 시가총액 '55.95조')을 그대로 쓰세요.",
+                      "순위는 기준일까지 공개된 재무·가격만으로 계산했습니다.",
                       "산업 분류는 아직 제공하지 않습니다(데이터 소스 결정 대기).",
                       "이 목록은 매수 수량이나 매매 시점을 제시하지 않습니다."])

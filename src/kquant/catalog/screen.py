@@ -26,7 +26,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from kquant.catalog.amount import AmountError, parse_number
+from kquant.catalog.amount import AmountError, format_value, parse_number
 from kquant.catalog.catalog import PERIOD_LABELS, Field, resolve, suggest
 from kquant.context import DataContext, DateError
 from kquant.disclaimer import DISCLAIMER
@@ -89,29 +89,37 @@ def _field(name, where: str) -> Field:
     return f
 
 
-def _period(f: Field, period) -> str:
+def _period(f: Field, period, loc: str, inherited: dict[str, str] | None = None) -> str:
+    """기간 확정. ``loc``(예: ``where[0]``, ``sort``, ``fields[1]``)은 오류 위치로 돌려준다 — 에이전트가 고칠 곳을 알게.
+
+    ``inherited``: sort·fields에서 기간을 생략하면, 같은 항목이 where에 한 기간으로만 쓰였을 때 그 기간을 쓴다
+    (사용자가 이미 정한 기간을 보여 주는 열에 다시 묻지 않는다). where 자체에는 적용하지 않는다.
+    """
     if period is None:
         if len(f.periods) == 1:
             return f.periods[0]
+        if inherited and f.id in inherited:
+            return inherited[f.id]
         if f.default_period is None:
             raise ScreenError(
-                "period_required", f"'{f.label}'은(는) 기간을 지정해야 합니다",
-                field=f.id, options=[{"period": p, "label": PERIOD_LABELS[p]} for p in f.periods])
+                "period_required", f"{loc}: '{f.label}'은(는) 기간을 지정해야 합니다",
+                field=f.id, location=loc,
+                options=[{"period": p, "label": PERIOD_LABELS[p]} for p in f.periods])
         return f.default_period
     if not isinstance(period, str) or period not in f.periods:
-        raise ScreenError("unsupported_period", f"'{f.label}'에서 지원하지 않는 기간입니다: {_short(period)}",
-                          field=f.id, options=list(f.periods))
+        raise ScreenError("unsupported_period", f"{loc}: '{f.label}'에서 지원하지 않는 기간입니다: {_short(period)}",
+                          field=f.id, location=loc, options=list(f.periods))
     return period
 
 
-def _cond(c) -> Cond:
+def _cond(c, loc: str) -> Cond:
     if not isinstance(c, dict):
         raise ScreenError("invalid_query", "where의 각 조건은 객체여야 합니다")
     unknown = set(c) - COND_KEYS
     if unknown:
         raise ScreenError("unknown_key", f"조건에 알 수 없는 키: {sorted(map(_short, unknown))}")
     f = _field(c.get("field"), "where")
-    p = _period(f, c.get("period"))
+    p = _period(f, c.get("period"), loc)
     op = c.get("op")
     if op == "between":
         v = c.get("value")
@@ -146,7 +154,11 @@ def validate(query) -> Plan:
         raise ScreenError("invalid_query", "where는 조건 목록이어야 합니다")
     if len(where) > MAX_WHERE:
         raise ScreenError("too_many_conditions", f"조건은 최대 {MAX_WHERE}개입니다")
-    conds = tuple(_cond(c) for c in where)
+    conds = tuple(_cond(c, f"where[{i}]") for i, c in enumerate(where))
+    periods_by_field: dict[str, set[str]] = {}
+    for c in conds:
+        periods_by_field.setdefault(c.field.id, set()).add(c.period)
+    inherited = {k: next(iter(v)) for k, v in periods_by_field.items() if len(v) == 1}
 
     markets = query.get("market", DEFAULT_MARKETS)
     if isinstance(markets, str):
@@ -165,18 +177,18 @@ def validate(query) -> Plan:
         order = s.get("order", "desc")
         if order not in ("asc", "desc"):
             raise ScreenError("bad_sort", "order는 asc 또는 desc입니다")
-        sort = (f, _period(f, s.get("period")), order == "asc")
+        sort = (f, _period(f, s.get("period"), "sort", inherited), order == "asc")
 
     extra = []
     fields = query.get("fields", [])
     if not isinstance(fields, list) or len(fields) > MAX_FIELDS:
         raise ScreenError("invalid_query", f"fields는 최대 {MAX_FIELDS}개 항목 목록입니다")
-    for x in fields:
+    for i, x in enumerate(fields):
         x = {"field": x} if isinstance(x, str) else x
         if not isinstance(x, dict) or set(x) - {"field", "period"}:
             raise ScreenError("invalid_query", "fields의 각 항목은 이름 또는 {field, period?}입니다")
         f = _field(x.get("field"), "fields")
-        extra.append((f, _period(f, x.get("period"))))
+        extra.append((f, _period(f, x.get("period"), f"fields[{i}]", inherited)))
 
     limit = query.get("limit", DEFAULT_LIMIT)
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= MAX_LIMIT:
@@ -208,6 +220,15 @@ def _jsonable(x):
     return x
 
 
+def _annual_end(period_end, fiscal_q) -> str | None:
+    """'직전 연간' 값의 회계연도 종료일. 스냅샷 규칙(q=4면 그 FY, 아니면 결산기준일 3q개월 전 FY)과 같다."""
+    if period_end is None or pd.isna(period_end) or not isinstance(fiscal_q, str) or not fiscal_q[:1].isdigit():
+        return None
+    q = int(fiscal_q[0])
+    end = pd.Timestamp(period_end) - pd.DateOffset(months=3 * (q % 4)) + pd.offsets.MonthEnd(0)
+    return str(end.date())
+
+
 def execute(plan: Plan, ctx: DataContext) -> dict:
     try:
         date = ctx.resolve_date(plan.as_of)
@@ -231,15 +252,21 @@ def execute(plan: Plan, ctx: DataContext) -> dict:
         hit = hit.sort_values("market_cap.latest", ascending=False, na_position="last", kind="stable")
     top = hit.head(plan.limit)
 
+    has_annual = any(p == "annual" for _, p in cols)
     rows = []
     for _, r in top.iterrows():
         row = {"symbol": r["symbol"], "name": r["name"], "market": r["market"],
                "fin_period_end": _jsonable(r["fin_period_end"]), "trading_halted": bool(r["trading_halted"])}
+        if has_annual:
+            row["fin_annual_period_end"] = _annual_end(r["fin_period_end"], r["fin_fiscal_q"])
+        display = {}
         for f, p in cols:
             v = _jsonable(r[f.key(p)])
             if isinstance(v, float):
                 v = round(v) if f.unit == "KRW" else round(v, 2)
             row[f.key(p)] = v
+            display[f.key(p)] = format_value(v, f.unit)
+        row["display"] = display
         rows.append(row)
     return {
         "ok": True,
@@ -250,7 +277,11 @@ def execute(plan: Plan, ctx: DataContext) -> dict:
                      "unit": f.unit} for f, p in cols],
         "rows": rows,
         "notes": [
+            ("값을 사용자에게 보일 때는 각 행 display의 문자열(예: '55.95조', '1,862억', '5.92배')을 그대로 쓰세요. "
+             "원 단위 숫자를 직접 조·억으로 환산하지 마세요."),
             "재무값은 기준일까지 법정 제출 기한이 지난 최신 보고서 기준이며, fin_period_end가 그 결산기준일입니다.",
+            *(["'직전 연간'(annual) 값은 fin_period_end가 아니라 fin_annual_period_end로 끝나는 직전 완결 회계연도 값입니다."]
+              if has_annual else []),
             "재무 보고 통화가 원화가 아닌 기업은 재무 기반 조건을 만족하지 않는 것으로 처리합니다.",
             "trading_halted가 true인 종목은 기준일에 거래가 없었습니다(거래정지). 가격은 직전 거래 가격입니다.",
         ],

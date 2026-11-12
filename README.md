@@ -4,7 +4,7 @@ KOSPI·KOSDAQ 종목의 재무제표와 가격 데이터로 **조건 검색, 전
 이를 [Hermes Agent](https://github.com/NousResearch/hermes-agent)에서 대화형으로 쓰기 위한 MCP 서버·배포 설정입니다.
 
 > **투자 권유가 아닙니다.** 이 프로젝트의 모든 결과는 과거 데이터에 기반한 분석 자료입니다. 매수 수량·매매 신호·목표가는 제공하지 않으며,
-> 매매 판단과 그 결과의 책임은 이용자에게 있습니다. 모든 도구 응답에 같은 고지가 붙습니다.
+> 매매 판단과 그 결과의 책임은 이용자에게 있습니다. 모든 도구 응답에 같은 고지가 붙습니다. 자세한 내용은 [면책 고지](#면책-고지).
 
 ## 기능
 | 기능 | 설명 |
@@ -79,36 +79,122 @@ dataset/            재무 가공 결과와 수정계수 이벤트(아래 "데�
 재무 데이터는 DART 원본(약 5GB)이 있어야 다시 만들 수 있어 가공 결과를 함께 배포합니다. 데이터 이용 시 각 출처의 이용 조건을 따르세요.
 2017년 이전 시세는 KOSPI 위주라 백테스트는 2018년부터입니다.
 
-## 빠른 시작
-요구 사항: [uv](https://docs.astral.sh/uv/) (Python 3.13은 uv가 설치), 공시 조회를 쓰려면 OpenDART API 키.
+## 로컬에서 실행하기
+GitHub에서 받은 그대로 내 PC에서 실행하는 순서입니다. Windows 11, Python 3.13(uv 설치), Hermes Agent v0.22.2에서 처음부터 끝까지 확인했습니다.
+명령은 **저장소 폴더에서** 실행합니다. 셸마다 문법이 다른 곳은 bash(macOS·Linux·Git Bash)와 PowerShell(Windows)을 따로 적었습니다.
 
+### 0. 준비물
+| 항목 | 필요한 곳 | 비고 |
+|---|---|---|
+| [git](https://git-scm.com/), [uv](https://docs.astral.sh/uv/getting-started/installation/) | 전부 | Python 3.13은 uv가 알아서 설치합니다 |
+| 디스크 약 1GB, 메모리 4GB 이상 | 전부 | 시세 원본 약 220MB. 그리드 계산 중 메모리 최대 약 3GB, 대화용 MCP 서버 약 1–1.3GB |
+| 인터넷 연결 | 시세 받기(GitHub), 공시 조회(OpenDART) | 회사·기관 보안 프록시가 TLS를 가로채면 `uv sync`·시세 받기가 인증서 오류로 실패할 수 있습니다(uv는 `--native-tls`) |
+| OpenDART API 키 (선택) | 종목 목록의 최근 공시 | [opendart.fss.or.kr](https://opendart.fss.or.kr)에서 무료 발급. 없으면 공시만 빠집니다 |
+| LLM 제공자 계정 (선택) | 대화형 에이전트(4–6단계) | Hermes Agent가 지원하는 제공자. 사용량만큼 비용이 들 수 있습니다 |
+| [Hermes Agent](https://github.com/NousResearch/hermes-agent), Docker Desktop (선택) | 대화형 에이전트·웹 채팅(5–6단계) | 설치는 각 공식 문서를 따릅니다 |
+
+### 1. 받기와 설치
 ```bash
+git clone https://github.com/nsson/investor_agent_public.git
+cd investor_agent_public
 uv sync
-cp .env.example .env            # DART_API_KEY 등 값 채우기(.env는 git 제외)
+uv run pytest -q          # 시세를 받기 전이라 실데이터 테스트는 skip, 나머지는 통과해야 합니다
+```
+Windows에서 한글이 깨지면 PowerShell은 `$env:PYTHONUTF8 = "1"`, bash는 `export PYTHONUTF8=1`을 먼저 실행합니다.
 
-# 시세 받기(처음 한 번, 연도별). --no-events: 저장소의 수정계수 이벤트를 그대로 쓴다
-for y in $(seq 2016 2026); do uv run kquant update-prices --year $y --no-events; done
-uv run kquant update-corp-codes # 공시 조회용 상장사 고유번호(DART_API_KEY 필요)
-uv run kquant run-grid --full   # 백테스트 그리드(약 2분) → dataset/grid/
+### 2. 데이터 받기와 백테스트 계산 (처음 한 번, 약 7분)
+과거 연도 시세는 저장소의 수정계수 이벤트를 그대로 쓰고(`--no-events`), **올해 시세는 `--no-events` 없이** 받아 저장소 이후에 생긴 분할·병합까지 계산합니다.
+순서를 지켜야 합니다(올해 계산에 작년 파일이 필요).
 
-uv run kquant screen '{"sort": {"field": "market_cap"}, "limit": 5}'
-uv run kquant report '{"strategy": "value", "n": 10, "start_year": 2018, "end_year": 2021}'
+bash:
+```bash
+for y in $(seq 2016 $(( $(date +%Y) - 1 ))); do uv run kquant update-prices --year $y --no-events; done
+uv run kquant update-prices        # 올해 시세 + 올해 수정계수 이벤트
+uv run kquant run-grid --full      # 백테스트 그리드(54개 설정, 약 3–6분) → dataset/grid/
+```
+PowerShell:
+```powershell
+foreach ($y in 2016..((Get-Date).Year - 1)) { uv run kquant update-prices --year $y --no-events }
+uv run kquant update-prices
+uv run kquant run-grid --full
+```
+공시 조회를 쓰려면 `.env`를 만들고(`cp .env.example .env`, PowerShell은 `Copy-Item .env.example .env`) `DART_API_KEY=`에 키를 넣은 뒤
+`uv run kquant update-corp-codes`를 한 번 실행합니다. `.env`는 git에 올라가지 않습니다.
+
+### 3. 명령줄로 써 보기 (LLM 없이)
+bash:
+```bash
+uv run kquant screen '{"where": [{"field": "revenue", "period": "annual", "op": ">=", "value": "1조"}], "sort": {"field": "market_cap"}, "limit": 5}'
+uv run kquant report '{"strategy": "value", "n": 10, "start_year": 2018, "end_year": 2024}'
 uv run kquant recommend '{"strategies": ["value"], "n": 5}'
 ```
-매일 갱신: `uv run kquant update-prices`(당해 연도 시세 + 수정계수 이벤트 증분) → `uv run kquant run-grid`(진행 중인 기간만 재계산).
-
-Docker:
-```bash
-docker compose build
-docker compose run --rm kquant update-prices --year 2026
-docker compose run --rm kquant run-grid --full
+PowerShell(Windows PowerShell 5.1은 JSON 안의 큰따옴표를 `\"`로 써야 합니다):
+```powershell
+uv run kquant screen '{\"where\": [{\"field\": \"revenue\", \"period\": \"annual\", \"op\": \">=\", \"value\": \"1조\"}], \"sort\": {\"field\": \"market_cap\"}, \"limit\": 5}'
+uv run kquant report '{\"strategy\": \"value\", \"n\": 10, \"start_year\": 2018, \"end_year\": 2024}'
 ```
+리포트는 `dataset/reports/report-….html`로 저장되며 브라우저로 엽니다. 결과의 `display`가 사람이 읽는 값(예: `55.95조`)입니다.
 
-## Hermes에서 대화로 쓰기
-- 공개 MCP 서버: `uv run kquant-mcp`(stdio). 도구 `list_fields`, `screen`, `strategy_options`, `strategy_report`, `recommend` — 모두 읽기 전용.
-- Hermes 공개 프로필 설정·대화 규칙·배포 순서: [`hermes/README.md`](hermes/README.md)
-- 로컬 1인 웹 채팅(Open WebUI + 리포트 링크): `hermes/compose.webui.local.yaml`
-- 배포 전 노출 도구 점검: `uv run kquant check-hermes`(공개 프로필 API 서버 `/v1/toolsets`, 위험 도구가 켜져 있으면 종료 코드 2)
+### 4. 대화형으로 쓰기 ① — MCP를 지원하는 AI 클라이언트에 연결 (가장 간단)
+이 저장소는 표준 MCP 서버(`uv run kquant-mcp`, stdio, 읽기 전용 도구 5개)를 제공합니다. 저장소 루트의 `.mcp.json`에 등록되어 있어
+Claude Code처럼 프로젝트 `.mcp.json`을 읽는 클라이언트는 저장소 폴더에서 열기만 하면 연결됩니다.
+다른 MCP 클라이언트는 명령 `uv`, 인자 `["--directory", "<저장소 절대경로>", "run", "kquant-mcp"]`로 등록합니다.
+이 방식에는 대화 규칙(`hermes/SOUL.md`)이 자동으로 적용되지 않으니, 필요하면 그 내용을 클라이언트의 지시문에 넣습니다.
+
+### 5. 대화형으로 쓰기 ② — Hermes Agent
+1. Hermes Agent를 설치하고 LLM 제공자에 로그인합니다(Hermes 공식 문서).
+2. 이 에이전트 전용 프로필을 만듭니다. 내장 도구(터미널·파일·웹)와 스킬이 없는 프로필입니다.
+   ```bash
+   hermes profile create kquantpub --no-skills --no-alias
+   ```
+3. 프로필 폴더(Windows `%LOCALAPPDATA%\hermes\profiles\kquantpub`, macOS·Linux `~/.hermes/profiles/kquantpub`)에서
+   - `config.yaml`을 [`hermes/config.local.example.yaml`](hermes/config.local.example.yaml) 내용으로 바꾸고 `<…>`(모델, 제공자, 저장소 절대경로)를 채웁니다.
+   - 저장소의 `hermes/SOUL.md`를 프로필 폴더의 `SOUL.md`로 복사합니다(대화 규칙: 카탈로그 먼저, 모호하면 되묻기, 수량·신호 금지, 고지).
+   - 프로필 폴더의 `.env`에 아래 4줄을 넣습니다. `API_SERVER_KEY`는 직접 만든 긴 임의 문자열입니다.
+     ```
+     API_SERVER_ENABLED=true
+     API_SERVER_HOST=127.0.0.1
+     API_SERVER_PORT=8643
+     API_SERVER_KEY=<임의의 긴 문자열>
+     ```
+4. 터미널에서 바로 대화: `hermes -p kquantpub chat`
+5. 웹 채팅을 쓰려면 게이트웨이를 켜 둡니다(별도 창): `hermes -p kquantpub gateway run`.
+   로그에 `MCP: 5 tool(s)`와 `API server listening on http://127.0.0.1:8643`이 보이면 준비된 것입니다.
+6. 점검(선택): 다른 창에서 `HERMES_API_KEY`에 위 키를 넣고 `uv run kquant check-hermes` → `"ok": true`, `"names": []`이면 내장 도구가 하나도 켜져 있지 않습니다.
+
+### 6. 웹 채팅 화면 (Open WebUI, Docker 필요)
+Docker Desktop을 켜고 5단계 게이트웨이가 떠 있는 상태에서 실행합니다. 처음에는 이미지(수 GB)를 받느라 몇 분 걸립니다.
+
+bash:
+```bash
+export HERMES_API_KEY=<5단계의 API_SERVER_KEY>
+docker compose -f hermes/compose.webui.local.yaml up -d
+```
+PowerShell:
+```powershell
+$env:HERMES_API_KEY = "<5단계의 API_SERVER_KEY>"
+docker compose -f hermes/compose.webui.local.yaml up -d
+```
+브라우저에서 `http://127.0.0.1:3000` → 모델 `kquantpub`을 고르고 대화합니다. 리포트 링크는 `http://127.0.0.1:8650/…`로 열립니다.
+끄기: `docker compose -f hermes/compose.webui.local.yaml down`, 게이트웨이 창에서 Ctrl+C.
+이 구성은 **로그인 없이 내 PC(127.0.0.1)에서만** 열립니다. 외부에 공개하려면 인증·요청 제한·TLS를 따로 갖춰야 합니다([`hermes/README.md`](hermes/README.md)).
+
+### 7. 데이터 갱신 (선택)
+`uv run kquant update-prices`(올해 시세 + 수정계수 이벤트) → `uv run kquant run-grid`(진행 중인 기간만 다시 계산).
+Docker를 쓰려면 `docker compose build` 후 `docker compose run --rm kquant update-prices`, `docker compose run --rm kquant run-grid --full`
+(데이터는 `./dataset`을 컨테이너에 붙입니다. 시세 받기는 2단계와 같은 순서).
+재무 데이터(`dataset/fin/`)는 이 저장소가 갱신할 때 `git pull`로 받습니다(DART 원본 약 5GB가 있어야 다시 만들 수 있어 `kquant build-fin`은 일반 사용자 환경에서 쓰지 않습니다).
+
+### 자주 막히는 곳
+| 증상 | 원인·해결 |
+|---|---|
+| `JSONDecodeError: Expecting property name` (PowerShell) | JSON 안의 큰따옴표를 `\"`로 씁니다(3단계 예시) |
+| 한글이 `???`로 나옴 | `PYTHONUTF8=1` 설정(1단계) |
+| 전략 리포트가 "백테스트 결과가 아직 준비되지 않았습니다" | 2단계 `run-grid --full`을 실행하지 않았습니다 |
+| 종목 목록의 공시가 "공시 고유번호 정보 없음" | `DART_API_KEY` 설정 후 `update-corp-codes`(2단계) |
+| Hermes가 도구 없이 답하거나 `MCP: 0 tool(s)` | `config.yaml`의 저장소 경로 확인. `uv`를 못 찾으면 `command`에 uv 전체 경로(`where uv` / `which uv`) |
+| 웹 채팅에 모델 목록이 비어 있음 | 게이트웨이(5단계)를 먼저 켰는지, `HERMES_API_KEY`가 프로필 `.env`의 `API_SERVER_KEY`와 같은지 확인 |
+| 표의 금액이 이상함 | 모델이 원 단위 값을 직접 환산한 경우입니다. 도구 응답의 `display` 값이 기준이며, 성능이 낮은 모델일수록 자주 틀립니다 |
 
 ## 테스트
 ```bash
@@ -122,6 +208,16 @@ uv run ruff check src tests
 - 회생절차 중 출자전환을 동반한 감자처럼 거래소 기준가가 병합 비율과 다르게 정해진 경우 기존 주주의 손실이 수정종가에 반영되지 않을 수 있다.
 - 비KRW로 보고하는 기업(외국 기업 등)의 해당 기간은 유니버스에서 제외한다.
 자세한 설계와 결정 근거는 [`docs/spec/system-spec.md`](docs/spec/system-spec.md).
+
+## 면책 고지
+- 이 프로젝트와 그 결과(조건 검색, 백테스트 리포트, 전략 기준 종목 목록, 에이전트의 답변)는 **정보 제공용 분석 자료이며 투자 권유나 투자 자문이 아닙니다.**
+  특정 종목의 매수·매도를 권하지 않고, 매수 수량·비중·매매 시점·목표가를 제공하지 않습니다.
+- 과거 데이터에 기반한 백테스트 결과는 미래 수익을 보장하지 않습니다.
+- 데이터(시세·재무제표)와 그 가공 결과는 정확성·완전성을 보장하지 않습니다. 출처 데이터의 오류, 가공 과정의 한계(아래 "알려진 한계"),
+  대화형 에이전트(LLM)가 값을 잘못 옮기는 오류가 있을 수 있으니 중요한 판단 전에는 공시 원문 등으로 직접 확인하세요.
+- **투자 판단과 그 결과에 대한 책임은 전적으로 이용자 본인에게 있으며**, 작성자는 이 프로젝트의 이용으로 생긴 손실에 책임지지 않습니다.
+- 이 코드로 다른 사람에게 서비스를 제공하려는 경우, 관련 법령(투자자문·유사투자자문 관련 규정 등)과 데이터 출처의 이용 조건을 확인하는 것은 운영자의 책임입니다.
+- 모든 도구 응답과 HTML 리포트에는 같은 취지의 고지("투자 권유가 아닙니다 … 책임은 이용자에게 있습니다")가 자동으로 붙습니다.
 
 ## 라이선스
 함께 배포하는 데이터(`dataset/`)는 위 "데이터"의 각 출처 이용 조건을 따릅니다.

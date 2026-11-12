@@ -1,0 +1,48 @@
+# Hermes 프로필 설정 예시 — 내 PC에서 직접 실행(로컬 1인용). README "로컬에서 실행하기" 5단계에서 쓴다.
+# Hermes Agent v0.22.2에서 확인(2026-11-13). 공개 서버용(컨테이너) 설정은 config.example.yaml.
+#
+# 1) hermes profile create kquantpub --no-skills --no-alias
+# 2) 이 파일을 프로필 폴더의 config.yaml로 복사하고 <…>를 채운다.
+#    프로필 폴더: Windows %LOCALAPPDATA%\hermes\profiles\kquantpub, macOS/Linux ~/.hermes/profiles/kquantpub
+# 3) 저장소 hermes/SOUL.md를 프로필 폴더의 SOUL.md로 복사한다(대화 규칙).
+# 4) 프로필 폴더의 .env에 아래 4줄을 넣는다(API_SERVER_KEY는 임의의 긴 문자열, 남에게 보이지 않게):
+#      API_SERVER_ENABLED=true
+#      API_SERVER_HOST=127.0.0.1
+#      API_SERVER_PORT=8643
+#      API_SERVER_KEY=<임의의 긴 문자열>
+
+model:                        # 쓰는 LLM 제공자·모델. `hermes -p kquantpub setup`으로 정해도 된다
+  default: <모델 이름>
+  provider: <제공자>
+
+gateway:
+  standalone: true            # 이 프로필만 단독으로 띄운다(포트 8643)
+
+mcp_servers:
+  kquant-public:
+    # 저장소의 MCP 서버를 uv로 직접 띄운다. uv를 못 찾으면 command에 uv 전체 경로를 쓴다
+    # (Windows: `where uv`, macOS/Linux: `which uv`).
+    command: uv
+    args: ["--directory", "<저장소 절대경로, 예: D:/src/investor_agent_public 또는 /home/me/investor_agent_public>", "run", "kquant-mcp"]
+    env:
+      PYTHONUTF8: "1"                                   # Windows 한글 출력
+      KQUANT_REPORT_BASE_URL: http://127.0.0.1:8650     # 리포트 링크 앞부분(hermes/compose.webui.local.yaml의 리포트 서버)
+      # DART_API_KEY는 저장소의 .env에서 읽는다(여기에 쓰지 않는다)
+    connect_timeout: 120
+    timeout: 180
+    tools:
+      include: [list_fields, screen, strategy_options, strategy_report, recommend]
+      resources: false
+      prompts: false
+
+platform_toolsets:            # 이 프로필이 쓸 수 있는 도구는 kquant 다섯 개뿐(터미널·파일·웹 등 내장 도구 없음)
+  api_server: [kquant-public]
+  cli: [kquant-public]
+
+curator:
+  enabled: false
+skills:
+  write_approval: true
+memory:
+  memory_enabled: false
+  user_profile_enabled: false

@@ -1,5 +1,6 @@
 import math
 
+import pandas as pd
 import pytest
 
 from kquant.catalog.amount import AmountError, parse_number
@@ -89,6 +90,63 @@ def test_screen_between_and_errors(ctx):
     for q, code in cases:
         out = screen(q, ctx)
         assert out["ok"] is False and out["problem"]["code"] == code, (q, out)
+
+
+def test_screen_period_location_and_inherit(ctx):
+    """2026-11-12 Hermes E2E: fields에 기간 없는 'revenue'가 있어 period_required가 났지만 위치가 없어
+    에이전트가 where만 20번 가까이 고쳤다. 오류에 위치를 넣고, where에 한 기간으로 쓴 항목은 sort·fields가 그 기간을 쓴다."""
+    out = screen({"where": [{"field": "pbr", "op": ">", "value": 0}], "fields": ["market_cap", "revenue"]}, ctx)
+    assert out["ok"] is False and out["problem"]["code"] == "period_required"
+    assert out["problem"]["location"] == "fields[1]" and out["problem"]["message"].startswith("fields[1]:")
+
+    out = screen({"where": [{"field": "revenue", "op": ">", "value": 1}]}, ctx)
+    assert out["problem"]["location"] == "where[0]"  # where에는 상속 없음 — 지금처럼 되묻는다
+    out = screen({"sort": {"field": "revenue"}}, ctx)
+    assert out["problem"]["location"] == "sort"
+    out = screen({"where": [{"field": "revenue", "period": "weekly", "op": ">", "value": 1}]}, ctx)
+    assert out["problem"]["code"] == "unsupported_period" and out["problem"]["location"] == "where[0]"
+
+    r = screen({"where": [{"field": "revenue", "period": "ttm", "op": ">=", "value": 1}],
+                "fields": ["revenue"], "sort": {"field": "revenue"}}, ctx)
+    assert r["ok"], r
+    assert [c["key"] for c in r["columns"]] == ["revenue.ttm"]
+
+    # where에 같은 항목이 두 기간으로 있으면 어느 쪽인지 모호 → 상속하지 않는다
+    out = screen({"where": [{"field": "revenue", "period": "ttm", "op": ">=", "value": 1},
+                            {"field": "revenue", "period": "quarter", "op": ">=", "value": 1}],
+                  "fields": ["revenue"]}, ctx)
+    assert out["ok"] is False and out["problem"]["location"] == "fields[0]"
+
+
+def test_format_value():
+    from kquant.catalog.amount import format_value, parse_number
+
+    assert format_value(55953285300000, "KRW") == "55.95조"  # 2026-11-13: 모델이 "559.5조"로 옮긴 값
+    assert format_value(186254472000000, "KRW") == "186.25조"
+    assert format_value(648e9, "KRW") == "6,480억" and format_value(1e9, "KRW") == "10억"
+    assert format_value(-2.5e12, "KRW") == "-2.50조" and format_value(35e6, "KRW") == "3,500만"
+    assert format_value(3500, "KRW") == "3,500원"
+    assert format_value(5.92, "배") == "5.92배" and format_value(12.345, "%") == "12.35%"
+    assert format_value(None, "KRW") is None and format_value(float("nan"), "KRW") is None
+    for v in (55953285300000, 648e9, 1e9):  # 표시값을 다시 읽으면 원값과 1% 안
+        assert abs(parse_number(format_value(v, "KRW"), "KRW") / v - 1) < 0.01
+
+
+def test_screen_display_and_annual_end(ctx):
+    r = screen({"where": [{"field": "revenue", "period": "ttm", "op": ">=", "value": "1000억"}],
+                "fields": ["market_cap", {"field": "per", "period": "ttm"}], "sort": {"field": "market_cap"}}, ctx)
+    row = {x["symbol"]: x for x in r["rows"]}["000001"]
+    assert row["display"] == {"revenue.ttm": "1.00조", "market_cap.latest": "5,000억", "per.ttm": "5.00배"}
+    assert "fin_annual_period_end" not in row  # annual 열이 없으면 넣지 않는다
+
+    from kquant.catalog.screen import _annual_end
+
+    assert _annual_end(pd.Timestamp("2026-06-30"), "2Q") == "2025-12-31"
+    assert _annual_end(pd.Timestamp("2026-09-30"), "3Q") == "2025-12-31"
+    assert _annual_end(pd.Timestamp("2026-03-31"), "4Q") == "2026-03-31"  # 3월 결산 사업보고서
+    assert _annual_end(pd.Timestamp("2026-06-30"), None) is None
+    r = screen({"fields": [{"field": "revenue", "period": "annual"}], "limit": 1}, ctx)
+    assert r["rows"][0]["fin_annual_period_end"] == "2025-12-31"
 
 
 def test_screen_rows_json_serializable_without_financials(ctx):

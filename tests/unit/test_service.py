@@ -49,6 +49,10 @@ def test_strategy_report_and_cache(svc_ctx, monkeypatch):
     assert "매도 0.20%(증권거래세)" in html  # 그리드에 쓴 비용이 한계 문구에 반영
     assert "출자전환을 동반한 감자" in html  # 2026-11-10: 회생 감자 손실 미반영 가능성 고지(STX 사례)
     assert r["summary"]["strategy"]["start"] == "2018-04-10"
+    # 2026-11-13: 표시 문자열(비율 → %)을 함께 준다. LLM이 직접 환산하지 않게
+    st, disp = r["summary"]["strategy"], r["display"]["strategy"]
+    assert disp["cagr"] == f"{st['cagr'] * 100:,.2f}%" and disp["mdd"].endswith("%") and "%" not in disp["sharpe"]
+    assert set(r["display"]["benchmarks"]) == set(r["summary"]["benchmarks"])
     monkeypatch.setenv("KQUANT_REPORT_BASE_URL", "https://example.test/r/")
     r2 = service.strategy_report(svc_ctx, {"strategy": "momentum", "n": 5})
     assert r2["report"].startswith("https://example.test/r/report-") and r2["report"].endswith(".html")
@@ -110,6 +114,8 @@ def test_recommend_contract(svc_ctx):
     r = service.recommend(svc_ctx, {"strategies": ["value"], "n": 3, "include_disclosures": False})
     assert r["ok"], r
     assert len(r["picks"]) == 3 and [p["rank"] for p in r["picks"]] == [1, 2, 3]
+    for p in r["picks"]:
+        assert p["display"]["market_cap"].endswith(("조", "억", "만", "원"))
     json.dumps(r, ensure_ascii=False)
     assert not (set(_keys(r)) & FORBIDDEN_KEYS)
     assert "투자 권유가 아닙니다" in r["disclaimer"]

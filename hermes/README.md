@@ -5,6 +5,7 @@ kquant 코어는 Hermes를 모른다. Hermes는 `kquant-public` MCP 서버(stdio
 | 파일 | 내용 |
 |---|---|
 | `SOUL.md` | 공개 프로필의 시스템 프롬프트(대화 규칙): 카탈로그 먼저, 모호하면 되묻기, 종목은 요청 시에만, 수량·비중·신호 금지, 고지. 운영자만 고친다 |
+| `config.local.example.yaml` | **내 PC에서 직접 실행**할 때의 프로필 config.yaml(MCP를 `uv --directory <저장소> run kquant-mcp`로 띄움) — 순서는 저장소 README "로컬에서 실행하기" |
 | `config.example.yaml` | 공개 프로필 config.yaml(MCP 서버 등록·`tools.include`·`platform_toolsets`·standalone)과 .env 키 — Hermes v0.22.2에서 확인 |
 | `compose.public.example.yaml`, `Dockerfile.public` | 공개 Hermes 게이트웨이 + kquant MCP 한 컨테이너 — **초안(미검증)**, 클라우드 배포 준비 때 빌드·검증 |
 | `compose.webui.local.yaml` | **로컬 1인 채팅**: Open WebUI(웹 채팅, 127.0.0.1:3000) + 리포트 정적 서버(127.0.0.1:8650) — 이 PC 전용 |

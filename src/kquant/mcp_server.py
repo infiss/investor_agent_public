@@ -79,7 +79,9 @@ def build_server() -> MCPServer:
     @mcp.tool(name="screen", annotations=READ_ONLY, description=(
         "카탈로그 항목으로 종목을 거릅니다. where의 각 조건은 {field, period?, op, value}. "
         "op: > >= < <= == != between(value=[하한, 상한]). 금액은 '2000억'·'1조 5000억'처럼 써도 됩니다. "
-        "기간이 여러 개인 항목은 period(quarter/ttm/annual/latest)를 지정해야 합니다."))
+        "기간이 여러 개인 항목은 period(quarter/ttm/annual/latest)를 지정해야 합니다. "
+        "sort({field, period?, order?})와 fields(이름 또는 {field, period?})도 같습니다 — where에 같은 항목이 있으면 "
+        "그 기간을 쓰고, 없으면 period를 넣으세요. 오류의 problem.location이 고칠 위치(예: fields[1])입니다."))
     @safe
     def screen(where: list[dict[str, Any]] | None = None, as_of: str = "latest", market: list[str] | None = None,
                sort: dict[str, Any] | None = None, fields: list[Any] | None = None, limit: int = 20) -> dict:
