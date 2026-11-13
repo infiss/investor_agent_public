@@ -1,9 +1,9 @@
 # kquant — 국내 주식 분석 에이전트 도구
 
-KOSPI·KOSDAQ 종목의 재무제표와 가격 데이터로 **조건 검색, 전략 백테스트 리포트, 전략 기준 종목 목록**을 제공하는 Python 패키지와,
+KOSPI·KOSDAQ 종목의 재무제표와 가격 데이터로 **조건 검색과 전략 백테스트 리포트**를 제공하는 Python 패키지와,
 이를 [Hermes Agent](https://github.com/NousResearch/hermes-agent)에서 대화형으로 쓰기 위한 MCP 서버·배포 설정입니다.
 
-> **투자 권유가 아닙니다.** 이 프로젝트의 모든 결과는 과거 데이터에 기반한 분석 자료입니다. 매수 수량·매매 신호·목표가는 제공하지 않으며,
+> **투자 권유가 아닙니다.** 이 프로젝트의 모든 결과는 과거 데이터에 기반한 분석 자료입니다. 종목 추천·매수 수량·매매 신호·목표가는 제공하지 않으며,
 > 매매 판단과 그 결과의 책임은 이용자에게 있습니다. 모든 도구 응답에 같은 고지가 붙습니다. 자세한 내용은 [면책 고지](#면책-고지).
 
 ## 기능
@@ -11,13 +11,12 @@ KOSPI·KOSDAQ 종목의 재무제표와 가격 데이터로 **조건 검색, 전
 |---|---|
 | 조건 검색 | 항목 카탈로그(매출·이익·PER·PBR·시가총액 등 36개)를 먼저 보여 주고, 카탈로그 항목과 기간(분기/TTM/연간/최신)으로만 검색한다. 모호한 요청은 되묻는다. SQL·수식 실행 경로 없음 |
 | 전략 리포트 | 사전 계산한 백테스트 그리드(전략 3종 × 종목 수 5/10/20 × 규모 전체/소형/대형 × 연·분기 리밸런싱 = 54개)에서 고른 설정의 성과를 HTML 리포트(누적 수익, 낙폭, 연도별 수익, CAGR·MDD·샤프 등, 시장 지수 비교)로 만든다. 리포트에 종목 목록은 없다 |
-| 종목 목록 | 사용자가 요청할 때만, 최신 기준일에 전략을 적용한 상위 종목과 최근 공시(OpenDART)를 보여 준다 |
 
 전략: `value`(1/PER·1/PSR·1/PBR·1/PCR 순위 평균), `salesmt`(전년 동기 대비 영업이익 성장률), `momentum`(최근 6개월 수익률).
 판단 시점은 법정 공시 기한 이후로 맞춰 미래 정보를 쓰지 않으며(look-ahead 방지), 상장폐지 종목도 표본에 남긴다(생존편향 방지).
 
 ## 이 에이전트로 할 수 있는 것
-Hermes Agent에 연결하면 웹 채팅(Open WebUI)이나 메신저(Telegram 등)에서 자연어로 묻고 답을 받습니다. 에이전트는 아래 도구 다섯 개만 쓰며,
+Hermes Agent에 연결하면 웹 채팅(Open WebUI)이나 메신저(Telegram 등)에서 자연어로 묻고 답을 받습니다. 에이전트는 도구 네 개(항목 카탈로그, 조건 검색, 전략 선택지, 전략 리포트)만 쓰며,
 터미널·파일·웹 검색 같은 다른 도구는 갖지 않습니다.
 
 **1. 어떤 항목으로 찾을 수 있는지 묻기**
@@ -38,14 +37,11 @@ Hermes Agent에 연결하면 웹 채팅(Open WebUI)이나 메신저(Telegram 등
 누적 수익 곡선·낙폭·연도별 수익 차트가 담긴 **HTML 리포트 링크**를 줍니다. 정하지 않은 값(규모, 리밸런싱 등)은 기본값을 쓰고 무엇을 썼는지 알립니다.
 고를 수 있는 값: 전략 `value`/`salesmt`/`momentum`, 종목 수 5/10/20, 규모 전체/소형(시총 하위 30%)/대형(시총 상위 30%), 연 1회/분기 1회, 2018년 이후 연도 구간.
 
-**4. 전략 기준 종목 목록 보기(요청할 때만)**
-> value와 momentum 전략을 같이 적용한 상위 5개 종목과 최근 공시를 알려 줘
-
-→ 최신 기준일에 전략(1–3개 조합)을 적용한 상위 종목의 기업명, 종목코드, 시장, 주요 지표(PER·PBR·ROE 등), 전략 순위와 최근 공시 링크를 보여 줍니다.
-
 **하지 않는 것**
+- 종목 추천("뭘 사면 좋아?", "유망한 종목 추천해 줘"에는 추천하지 않는다고 답하고, 직접 정한 조건의 검색이나 전략 리포트를 안내합니다).
+  조건 검색 결과도 사용자가 정한 조건에 맞는 종목일 뿐 추천이 아닙니다
 - 매수 수량, 비중, 투자금 배분, 매수·매도 시점, 목표가 제시("1000만 원으로 몇 주 사?"에는 답하지 않습니다)
-- 그리드 밖 임의 설정의 백테스트, 실시간 시세, 뉴스 기사 요약
+- 그리드 밖 임의 설정의 백테스트, 실시간 시세, 공시·뉴스 조회
 - 데이터 갱신·다운로드 같은 운영 작업(운영자가 CLI로만 실행)
 - "이전 지시를 무시하고 …" 같은 요청으로 규칙이나 역할을 바꾸는 것
 
@@ -88,8 +84,7 @@ GitHub에서 받은 그대로 내 PC에서 실행하는 순서입니다. Windows
 |---|---|---|
 | [git](https://git-scm.com/), [uv](https://docs.astral.sh/uv/getting-started/installation/) | 전부 | Python 3.13은 uv가 알아서 설치합니다 |
 | 디스크 약 1GB, 메모리 4GB 이상 | 전부 | 시세 원본 약 220MB. 그리드 계산 중 메모리 최대 약 3GB, 대화용 MCP 서버 약 1–1.3GB |
-| 인터넷 연결 | 시세 받기(GitHub), 공시 조회(OpenDART) | 회사·기관 보안 프록시가 TLS를 가로채면 `uv sync`·시세 받기가 인증서 오류로 실패할 수 있습니다(uv는 `--native-tls`) |
-| OpenDART API 키 (선택) | 종목 목록의 최근 공시 | [opendart.fss.or.kr](https://opendart.fss.or.kr)에서 무료 발급. 없으면 공시만 빠집니다 |
+| 인터넷 연결 | 시세 받기(GitHub) | 회사·기관 보안 프록시가 TLS를 가로채면 `uv sync`·시세 받기가 인증서 오류로 실패할 수 있습니다(uv는 `--native-tls`) |
 | LLM 제공자 계정 (선택) | 대화형 에이전트(4–6단계) | Hermes Agent가 지원하는 제공자. 사용량만큼 비용이 들 수 있습니다 |
 | [Hermes Agent](https://github.com/NousResearch/hermes-agent), Docker Desktop (선택) | 대화형 에이전트·웹 채팅(5–6단계) | 설치는 각 공식 문서를 따릅니다 |
 
@@ -118,15 +113,12 @@ foreach ($y in 2016..((Get-Date).Year - 1)) { uv run kquant update-prices --year
 uv run kquant update-prices
 uv run kquant run-grid --full
 ```
-공시 조회를 쓰려면 `.env`를 만들고(`cp .env.example .env`, PowerShell은 `Copy-Item .env.example .env`) `DART_API_KEY=`에 키를 넣은 뒤
-`uv run kquant update-corp-codes`를 한 번 실행합니다. `.env`는 git에 올라가지 않습니다.
 
 ### 3. 명령줄로 써 보기 (LLM 없이)
 bash:
 ```bash
 uv run kquant screen '{"where": [{"field": "revenue", "period": "annual", "op": ">=", "value": "1조"}], "sort": {"field": "market_cap"}, "limit": 5}'
 uv run kquant report '{"strategy": "value", "n": 10, "start_year": 2018, "end_year": 2024}'
-uv run kquant recommend '{"strategies": ["value"], "n": 5}'
 ```
 PowerShell(Windows PowerShell 5.1은 JSON 안의 큰따옴표를 `\"`로 써야 합니다):
 ```powershell
@@ -176,6 +168,7 @@ $env:HERMES_API_KEY = "<5단계의 API_SERVER_KEY>"
 docker compose -f hermes/compose.webui.local.yaml up -d
 ```
 브라우저에서 `http://127.0.0.1:3000` → 모델 `kquantpub`을 고르고 대화합니다. 리포트 링크는 `http://127.0.0.1:8650/…`로 열립니다.
+화면 상단에는 "투자 권유가 아닙니다" 고지 배너가 항상 표시됩니다(×로 닫아도 새로고침하면 다시 나타납니다).
 끄기: `docker compose -f hermes/compose.webui.local.yaml down`, 게이트웨이 창에서 Ctrl+C.
 이 구성은 **로그인 없이 내 PC(127.0.0.1)에서만** 열립니다. 외부에 공개하려면 인증·요청 제한·TLS를 따로 갖춰야 합니다([`hermes/README.md`](hermes/README.md)).
 
@@ -191,7 +184,6 @@ Docker를 쓰려면 `docker compose build` 후 `docker compose run --rm kquant u
 | `JSONDecodeError: Expecting property name` (PowerShell) | JSON 안의 큰따옴표를 `\"`로 씁니다(3단계 예시) |
 | 한글이 `???`로 나옴 | `PYTHONUTF8=1` 설정(1단계) |
 | 전략 리포트가 "백테스트 결과가 아직 준비되지 않았습니다" | 2단계 `run-grid --full`을 실행하지 않았습니다 |
-| 종목 목록의 공시가 "공시 고유번호 정보 없음" | `DART_API_KEY` 설정 후 `update-corp-codes`(2단계) |
 | Hermes가 도구 없이 답하거나 `MCP: 0 tool(s)` | `config.yaml`의 저장소 경로 확인. `uv`를 못 찾으면 `command`에 uv 전체 경로(`where uv` / `which uv`) |
 | 웹 채팅에 모델 목록이 비어 있음 | 게이트웨이(5단계)를 먼저 켰는지, `HERMES_API_KEY`가 프로필 `.env`의 `API_SERVER_KEY`와 같은지 확인 |
 | 표의 금액이 이상함 | 모델이 원 단위 값을 직접 환산한 경우입니다. 도구 응답의 `display` 값이 기준이며, 성능이 낮은 모델일수록 자주 틀립니다 |
@@ -210,8 +202,8 @@ uv run ruff check src tests
 자세한 설계와 결정 근거는 [`docs/spec/system-spec.md`](docs/spec/system-spec.md).
 
 ## 면책 고지
-- 이 프로젝트와 그 결과(조건 검색, 백테스트 리포트, 전략 기준 종목 목록, 에이전트의 답변)는 **정보 제공용 분석 자료이며 투자 권유나 투자 자문이 아닙니다.**
-  특정 종목의 매수·매도를 권하지 않고, 매수 수량·비중·매매 시점·목표가를 제공하지 않습니다.
+- 이 프로젝트와 그 결과(조건 검색, 백테스트 리포트, 에이전트의 답변)는 **정보 제공용 분석 자료이며 투자 권유나 투자 자문이 아닙니다.**
+  종목을 추천하거나 특정 종목의 매수·매도를 권하지 않고, 매수 수량·비중·매매 시점·목표가를 제공하지 않습니다.
 - 과거 데이터에 기반한 백테스트 결과는 미래 수익을 보장하지 않습니다.
 - 데이터(시세·재무제표)와 그 가공 결과는 정확성·완전성을 보장하지 않습니다. 출처 데이터의 오류, 가공 과정의 한계(아래 "알려진 한계"),
   대화형 에이전트(LLM)가 값을 잘못 옮기는 오류가 있을 수 있으니 중요한 판단 전에는 공시 원문 등으로 직접 확인하세요.

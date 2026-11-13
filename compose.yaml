@@ -2,7 +2,6 @@
 #   docker compose build
 #   docker compose run --rm kquant update-prices --year 2026     # marcap 동기화(네트워크)
 #   docker compose run --rm kquant run-grid --full                # 그리드 계산(약 2분)
-#   docker compose run --rm kquant update-corp-codes              # DART 고유번호(DART_API_KEY 필요)
 #   docker compose run --rm -T mcp                                # 공개 MCP 서버(stdio) — Hermes가 띄운다
 # 컨테이너 사용자는 uid 1000이다. 호스트 dataset/ 소유자가 다르면 `user: "${UID}:${GID}"`를 지정한다.
 # 비밀값은 compose 옆 .env(git 제외)에서 변수 치환으로만 넣는다. 이미지에는 들어가지 않는다.
@@ -14,7 +13,6 @@ services:
     environment:
       KQUANT_DATA_DIR: /data
       KQUANT_REPORT_DIR: /data/reports
-      DART_API_KEY: ${DART_API_KEY:-}
     volumes:
       - ./dataset:/data
 
@@ -25,7 +23,6 @@ services:
     environment:
       KQUANT_DATA_DIR: /data
       KQUANT_REPORT_DIR: /reports
-      DART_API_KEY: ${DART_API_KEY:-}   # 추천의 공시 조회에만 쓴다(다른 비밀값은 넣지 않는다)
       KQUANT_REPORT_BASE_URL: ${KQUANT_REPORT_BASE_URL:-}   # 리포트 링크 앞부분(없으면 파일명만). 로컬 채팅은 hermes/compose.webui.local.yaml
     volumes:
       - ./dataset:/data:ro
@@ -34,4 +31,4 @@ services:
     tmpfs: [/tmp]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
-    # 외부 네트워크는 공시 조회(DART)에만 쓴다. 공시가 필요 없으면 `network_mode: none`으로 막을 수 있다.
+    network_mode: none          # 공개 도구는 외부 네트워크를 쓰지 않는다(2026-11-13 추천·공시 조회 삭제)

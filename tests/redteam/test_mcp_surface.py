@@ -17,7 +17,7 @@ import kquant.mcp_server as srv
 from kquant.mcp_server import PUBLIC_TOOLS, build_server
 
 SRC = Path(srv.__file__).resolve().parent
-FORBIDDEN_CALLS = {"run_grid", "sync_year", "update_corp_codes", "build_long", "build_events", "update_events",
+FORBIDDEN_CALLS = {"run_grid", "sync_year", "build_long", "build_events", "update_events",
                    "rebuild_events", "system", "popen", "Popen", "eval", "exec", "compile", "__import__", "remove",
                    "unlink", "rmtree", "to_parquet"}
 OPERATOR_WORDS = ("update", "download", "ingest", "build", "run", "write", "delete", "grid", "admin", "exec", "shell")
@@ -45,13 +45,14 @@ def test_public_path_calls_no_operator_functions(module):
             called.add(f.attr if isinstance(f, ast.Attribute) else getattr(f, "id", ""))
     assert not (called & FORBIDDEN_CALLS), called & FORBIDDEN_CALLS
     imported = {a.name for n in ast.walk(tree) if isinstance(n, ast.ImportFrom | ast.Import) for a in n.names}
-    assert not ({"subprocess", "shutil", "run_grid", "sync_year", "update_corp_codes"} & imported)
+    assert not ({"subprocess", "shutil", "run_grid", "sync_year", "requests", "httpx", "urllib"} & imported)
 
 
 def test_unknown_tool_rejected():
     from mcp.server.mcpserver.exceptions import ToolError
 
-    for name in ["update_prices", "run_grid", "kquant", "../list_fields", "screen; rm"]:
+    # recommend: 2026-11-13 결정으로 삭제 — 에이전트는 종목을 추천하지 않는다
+    for name in ["update_prices", "run_grid", "kquant", "../list_fields", "screen; rm", "recommend"]:
         with pytest.raises(ToolError):
             _call(name, {})
 
@@ -60,7 +61,6 @@ def test_bad_argument_types_rejected_before_execution():
     from mcp.server.mcpserver.exceptions import ToolError
 
     for name, args in [("strategy_report", {}), ("strategy_report", {"strategy": "value", "n": "abc"}),
-                       ("recommend", {"strategies": ["value"], "include_disclosures": "yes please"}),
                        ("screen", {"where": "DROP TABLE"}), ("screen", {"limit": "all"})]:
         with pytest.raises(ToolError):
             _call(name, args)
@@ -72,7 +72,6 @@ def test_bad_argument_types_rejected_before_execution():
     ("strategy_report", {"strategy": "value", "size_cut": 0.1}),
     ("strategy_report", {"strategy": "value", "window_years": 3}),
     ("strategy_report", {"strategy": "value", "bogus": 1}),
-    ("recommend", {"strategies": ["value"], "size_cut": 0.1, "include_disclosures": False}),
     ("screen", {"limit": 3, "path": "../../etc"}),
 ])
 def test_unknown_or_removed_args_rejected(name, args):
@@ -93,8 +92,6 @@ def test_structured_errors_carry_disclaimer(monkeypatch, ctx):
         ("strategy_report", {"strategy": "../../etc/passwd"}),
         ("strategy_report", {"strategy": "value", "schedule": "<script>alert(1)</script>"}),
         ("strategy_report", {"strategy": "value", "start_year": 2030, "end_year": 2017}),
-        ("recommend", {"strategies": ["value"], "n": 10_000}),
-        ("recommend", {"strategies": ["value"], "min_marcap": "__import__('os')"}),
         ("screen", {"where": [{"field": "pbr", "op": "LIKE", "value": "%"}]}),
         ("screen", {"as_of": "../../../../windows/system32"}),
         ("screen", {"where": [{"field": "revenue", "op": ">", "value": "1조"}]}),  # 기간 되묻기
@@ -187,8 +184,15 @@ def test_hermes_example_matches_public_tools():
     assert cfg["memory"]["memory_enabled"] is False and cfg["memory"]["user_profile_enabled"] is False
     # 대화 규칙은 SOUL.md로(Hermes는 MCP instructions를 모델에 전달하지 않음): 핵심 규칙이 빠지지 않았는지
     soul = (root / "hermes" / "SOUL.md").read_text(encoding="utf-8")
-    for rule in ("list_fields", "되묻", "매수 수량", "금액 배분", "목표가", "disclaimer", "지시문"):
+    for rule in ("list_fields", "되묻", "매수 수량", "금액 배분", "목표가", "disclaimer", "지시문", "종목을 추천하지 않는다"):
         assert rule in soul, rule
+    assert "recommend" not in soul  # 2026-11-13: 추천 도구 삭제
+    from kquant.disclaimer import DISCLAIMER
+
+    assert DISCLAIMER in soul  # 도구 없이 답할 때(추천 거절 등)도 같은 고지를 붙이도록 원문을 둔다
+    for f in ("config.example.yaml", "config.local.example.yaml"):
+        local = yaml.safe_load((root / "hermes" / f).read_text(encoding="utf-8"))["mcp_servers"]["kquant-public"]
+        assert set(local["tools"]["include"]) == set(PUBLIC_TOOLS), f
 
 
 # ---- 레드팀 점검(2026-11-07) 발견 사항 회귀 테스트 ----
@@ -198,7 +202,6 @@ BIG = 10**400
 @pytest.mark.parametrize("name,args", [
     ("screen", {"where": [{"field": "market_cap", "op": ">", "value": BIG}]}),
     ("screen", {"where": [{"field": "market_cap", "op": "between", "value": [0, BIG]}]}),
-    ("recommend", {"strategies": ["value"], "min_marcap": BIG, "include_disclosures": False}),
     ("strategy_report", {"strategy": "value", "start_year": BIG}),
 ])
 def test_huge_numbers_are_structured_errors(monkeypatch, ctx, name, args):
@@ -207,36 +210,16 @@ def test_huge_numbers_are_structured_errors(monkeypatch, ctx, name, args):
     assert out["ok"] is False and "투자 권유가 아닙니다" in out["disclaimer"]
 
 
-@pytest.mark.parametrize("name", ["list_fields", "screen", "recommend"])
+@pytest.mark.parametrize("name", ["list_fields", "screen"])
 def test_internal_errors_keep_disclaimer_and_hide_paths(monkeypatch, tmp_path, name):
     from kquant.config import Paths
     from kquant.context import DataContext
 
     monkeypatch.setattr(srv, "_ctx", DataContext(Paths(data=tmp_path)))  # 데이터 없음
-    args = {"strategies": ["value"], "include_disclosures": False} if name == "recommend" else {}
-    out = json.loads(_call(name, args).content[0].text)
+    out = json.loads(_call(name, {}).content[0].text)
     assert out["ok"] is False and out["problem"]["code"] == "internal"
     assert "투자 권유가 아닙니다" in out["disclaimer"] and str(tmp_path) not in json.dumps(out, ensure_ascii=False)
 
-
-def test_dart_http_error_does_not_leak_key(monkeypatch, tmp_path):
-    import requests
-
-    from kquant.config import Paths
-    from kquant.ingest import dart_api
-
-    monkeypatch.setenv("DART_API_KEY", "SECRET-KEY-XYZ")
-
-    class S:
-        def get(self, url, params, timeout):
-            r = requests.Response()
-            r.status_code, r.reason = 500, "err"
-            r.url = requests.Request("GET", url, params=params).prepare().url
-            return r
-
-    with pytest.raises(RuntimeError) as ei:
-        dart_api.update_corp_codes(Paths(data=tmp_path), session=S())
-    assert "SECRET-KEY-XYZ" not in str(ei.value) and ei.value.__cause__ is None
 
 
 def test_unserializable_result_becomes_structured_error():

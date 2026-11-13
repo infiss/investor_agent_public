@@ -23,6 +23,8 @@ kquant 코어는 Hermes를 모른다. Hermes는 `kquant-public` MCP 서버(stdio
    docker compose -f hermes/compose.webui.local.yaml up -d
    ```
    첫 실행은 Open WebUI가 내장 모델 파일을 받느라 1분 정도 걸린다. 모델 목록의 `kquantpub`을 고르고 대화한다.
+   화면 상단에 "투자 권유가 아닙니다" 고지 배너가 항상 보인다(`WEBUI_BANNERS`, 닫아도 새로고침·재접속하면 다시 표시 — 모델이 도구 없이 답할 때 고지를 빠뜨려도 남게, 2026-11-13).
+   Open WebUI 설정은 compose 환경변수에서만 읽는다(`ENABLE_PERSISTENT_CONFIG=false`). 관리자 화면에서 바꾼 값은 재시작하면 되돌아간다.
 5. 끄기: `docker compose -f hermes/compose.webui.local.yaml down`, 게이트웨이 창에서 Ctrl+C.
 - 로그인 없이 쓰는 구성(`WEBUI_AUTH=false`)이라 127.0.0.1에만 연다. 제목·태그·후속 질문 자동 생성은 꺼 두었다(요청마다 에이전트가 도구까지 따로 돌기 때문).
 - 시작 순서: Docker → 게이트웨이 → Open WebUI. Docker가 꺼진 채 게이트웨이가 뜨면 kquant 연결이 멈춘 상태로 남는다(게이트웨이 재시작).
@@ -34,7 +36,6 @@ kquant 코어는 Hermes를 모른다. Hermes는 `kquant-public` MCP 서버(stdio
 docker compose build
 docker compose run --rm kquant update-prices --year 2026   # 연도별 marcap(네트워크)
 docker compose run --rm kquant run-grid --full
-docker compose run --rm kquant update-corp-codes            # .env의 DART_API_KEY
 ```
 공개 운영(2026-11-10 결정 D5): Hermes 공개 게이트웨이와 kquant를 **한 컨테이너**에 두고 MCP는 하위 프로세스
 (`command: /opt/kquant-venv/bin/kquant-mcp`)로 띄운다(`compose.public.example.yaml`). Hermes가 호스트에서 `docker compose run … mcp`로
@@ -44,7 +45,7 @@ docker compose run --rm kquant update-corp-codes            # .env의 DART_API_K
 ## 배포 순서
 1. 서버에 저장소와 데이터(`KQUANT_DATA_DIR`)를 둔다. git에 있는 산출물(`dataset/fin/*.parquet`, `dataset/prices/adj_events.parquet`) 외에
    marcap 원본은 `kquant update-prices --year YYYY`로 받는다(연도별).
-2. `uv sync` → `uv run kquant run-grid --full`(약 2분) → `uv run kquant update-corp-codes`(DART_API_KEY 필요).
+2. `uv sync` → `uv run kquant run-grid --full`(약 2분).
 3. 공개용 프로필을 따로 만든다(`hermes profile create kquantpub --no-skills --no-alias`). 그 프로필 폴더의 `config.yaml`·`.env`를
    `config.example.yaml`대로 채우고, `SOUL.md`를 프로필 폴더의 `SOUL.md`로 복사한다. 게이트웨이: `hermes -p kquantpub gateway run`.
    스킬은 두지 않는다(2026-11-10 결정): Hermes `skills` toolset에는 스킬 쓰기 도구 `skill_manage`가 묶여 있고, 대화 후 자동 검토가
@@ -63,11 +64,11 @@ docker compose run --rm kquant update-corp-codes            # .env의 DART_API_K
   `KQUANT_HERMES_URL=https://…`. 배포·설정 변경 때마다 실행하고 종료 코드 2면 배포하지 않는다.
 - **시작 순서**: Docker(엔진) → Hermes 게이트웨이. 게이트웨이가 먼저 뜨면 kquant MCP 연결이 실패한 채 멈춰 있고 모델이 도구 없이 답한다
   (2026-11-10 확인). systemd라면 게이트웨이 유닛에 `After=docker.service`·`Requires=docker.service`를 둔다.
-- **비밀값**: `API_SERVER_KEY`(프로필 .env), `DART_API_KEY`(compose 옆 .env)는 서버 secret으로만 넣는다. 이미지·git에 넣지 않는다.
+- **비밀값**: `API_SERVER_KEY`(프로필 .env)는 서버 secret으로만 넣는다. 이미지·git에 넣지 않는다.
 - **리포트 링크**: `KQUANT_REPORT_BASE_URL`을 정적 호스팅 주소로 두면 응답에 링크가 나간다(없으면 파일명만).
 - **데이터 갱신**: 운영자 cron/systemd timer로 `update-prices` → `run-grid`(공개 프로필에는 두지 않음).
 - **컨테이너 구성(D5)**: `compose.public.example.yaml` — docker 소켓 마운트 금지, `network_mode: host` 금지, `~/.hermes` 전체가 아닌 공개 프로필 홈만,
   데이터 읽기 전용. 공식 Hermes compose는 host 네트워크·`~/.hermes` 전체 마운트라 그대로 쓰지 않는다. 시작 순서 문제(Docker → 게이트웨이)는 한 컨테이너 구성에서는 사라진다.
 
 ## 운영 작업은 공개 서버에 없다
-데이터 갱신(`update-prices`, `build-fin`), 그리드 계산(`run-grid`), 고유번호 갱신(`update-corp-codes`)은 CLI 전용이다.
+데이터 갱신(`update-prices`, `build-fin`), 그리드 계산(`run-grid`)은 CLI 전용이다. 종목 추천 도구는 없다(2026-11-13 삭제).

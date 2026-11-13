@@ -27,15 +27,14 @@ mcp_servers:
     env:
       PYTHONUTF8: "1"                                   # Windows 한글 출력
       KQUANT_REPORT_BASE_URL: http://127.0.0.1:8650     # 리포트 링크 앞부분(hermes/compose.webui.local.yaml의 리포트 서버)
-      # DART_API_KEY는 저장소의 .env에서 읽는다(여기에 쓰지 않는다)
     connect_timeout: 120
     timeout: 180
     tools:
-      include: [list_fields, screen, strategy_options, strategy_report, recommend]
+      include: [list_fields, screen, strategy_options, strategy_report]
       resources: false
       prompts: false
 
-platform_toolsets:            # 이 프로필이 쓸 수 있는 도구는 kquant 다섯 개뿐(터미널·파일·웹 등 내장 도구 없음)
+platform_toolsets:            # 이 프로필이 쓸 수 있는 도구는 kquant 네 개뿐(터미널·파일·웹 등 내장 도구 없음)
   api_server: [kquant-public]
   cli: [kquant-public]
 

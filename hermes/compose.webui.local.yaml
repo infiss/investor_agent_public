@@ -10,8 +10,8 @@
 #   docker compose -f hermes/compose.webui.local.yaml up -d
 # 종료: docker compose -f hermes/compose.webui.local.yaml down   (대화 기록은 볼륨 open-webui-data에 남는다)
 #
-# Hermes API 키는 실행할 때 환경변수로만 넘긴다(파일에 쓰지 않음). Open WebUI는 키를 자체 DB에 저장하므로,
-# 키를 바꾸면 관리자 설정 > 연결에서 고치거나 볼륨을 지운다.
+# Hermes API 키는 실행할 때 환경변수로만 넘긴다(파일에 쓰지 않음). 설정을 DB에 저장하지 않으므로(ENABLE_PERSISTENT_CONFIG=false)
+# 키를 바꾸면 환경변수를 바꿔 다시 up 하면 된다.
 
 name: kquant-webui-local
 
@@ -36,6 +36,15 @@ services:
       ENABLE_WEB_SEARCH: "false"
       ENABLE_CODE_EXECUTION: "false"
       ENABLE_CODE_INTERPRETER: "false"
+      # 투자 권유 아님 고지를 화면 상단에 항상 표시(dismissible=false: ×로 닫아도 새로고침·재접속하면 다시 표시 — Open WebUI는 ×를 항상 그린다). 모델이 도구 없이 답할 때(추천 거절·되묻기) 고지를
+      # 빠뜨려도 화면에는 남게 한다(2026-11-13 결정). 문구는 kquant.disclaimer.DISCLAIMER와 같아야 한다(테스트로 고정).
+      # Open WebUI는 첫 실행 때 설정 전체를 DB에 저장하고 이후 DB 값을 우선한다. 기존 볼륨에도 배너가 적용되고 관리자 화면에서
+      # 지울 수 없게 설정은 이 파일(환경변수)에서만 읽는다. 관리자 화면에서 바꾼 설정은 재시작하면 이 파일 값으로 돌아간다.
+      ENABLE_PERSISTENT_CONFIG: "false"
+      WEBUI_BANNERS: >-
+        [{"id": "kquant-disclaimer", "type": "warning", "title": "",
+        "content": "본 정보는 과거 데이터에 기반한 분석 자료이며 투자 권유가 아닙니다. 매매 판단과 그 결과의 책임은 이용자에게 있습니다. 이 에이전트는 종목을 추천하지 않습니다.",
+        "dismissible": false, "timestamp": 1794528000}]
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

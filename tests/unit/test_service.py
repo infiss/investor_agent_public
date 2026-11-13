@@ -1,6 +1,5 @@
-"""공개 서비스 함수: 파라미터 검증, 리포트 생성·캐시, 추천 출력 계약."""
+"""공개 서비스 함수: 파라미터 검증, 리포트 생성·캐시."""
 
-import json
 
 import pytest
 from test_grid_incremental import _write  # 같은 디렉터리(pytest가 sys.path에 추가)
@@ -110,17 +109,13 @@ def test_report_param_errors(svc_ctx):
     assert r["ok"] is False and r["problem"]["code"] == "not_in_grid"
 
 
-def test_recommend_contract(svc_ctx):
-    r = service.recommend(svc_ctx, {"strategies": ["value"], "n": 3, "include_disclosures": False})
-    assert r["ok"], r
-    assert len(r["picks"]) == 3 and [p["rank"] for p in r["picks"]] == [1, 2, 3]
-    for p in r["picks"]:
-        assert p["display"]["market_cap"].endswith(("조", "억", "만", "원"))
-    json.dumps(r, ensure_ascii=False)
-    assert not (set(_keys(r)) & FORBIDDEN_KEYS)
-    assert "투자 권유가 아닙니다" in r["disclaimer"]
-    bad = service.recommend(svc_ctx, {"strategies": ["value"], "n": 31})
-    assert bad["problem"]["code"] == "bad_n"
+def test_no_recommendation_entrypoint():
+    """2026-11-13 결정: 종목 추천 기능 없음(공개 서비스·CLI 모두)."""
+    from kquant import cli
+
+    assert not hasattr(service, "recommend")
+    with pytest.raises(SystemExit):
+        cli.main(["recommend", "{}"])
 
 
 def test_strategy_options_and_catalog(svc_ctx):

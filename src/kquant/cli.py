@@ -90,12 +90,6 @@ def cmd_run_grid(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_update_corp_codes(args: argparse.Namespace) -> int:
-    from kquant.ingest.dart_api import update_corp_codes
-
-    print(f"상장사 고유번호 {update_corp_codes(load_paths()):,}건 저장")
-    return 0
-
 
 def _print_json(obj) -> None:
     import json
@@ -116,15 +110,6 @@ def cmd_report(args: argparse.Namespace) -> int:
     _print_json(res)
     return 0
 
-
-def cmd_recommend(args: argparse.Namespace) -> int:
-    import json
-
-    from kquant import service
-    from kquant.context import DataContext
-
-    _print_json(service.recommend(DataContext(), json.loads(args.params)))
-    return 0
 
 
 def cmd_check_hermes(args: argparse.Namespace) -> int:
@@ -160,17 +145,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--key", action="append", help="특정 그리드 키만 (여러 번 지정 가능)")
     p.set_defaults(func=cmd_run_grid)
 
-    p = sub.add_parser("update-corp-codes", help="OpenDART 상장사 고유번호 매핑 갱신(네트워크, DART_API_KEY)")
-    p.set_defaults(func=cmd_update_corp_codes)
 
     p = sub.add_parser("report", help='전략 리포트 생성. 예: {"strategy": "value", "n": 20, "schedule": "quarterly", '
                                         '"start_year": 2018, "end_year": 2021}')
     p.add_argument("params")
     p.set_defaults(func=cmd_report)
 
-    p = sub.add_parser("recommend", help='최신 기준 종목 추천. 예: {"strategies": ["value"], "n": 5}')
-    p.add_argument("params")
-    p.set_defaults(func=cmd_recommend)
 
     p = sub.add_parser("check-hermes", help="Hermes 공개 프로필의 노출 도구 점검(/v1/toolsets, HERMES_API_KEY 선택)")
     # 공개 프로필 = 8643(기본 포트 8642는 운영 프로필 몫, 2026-11-10 결정 D4). 클라우드에서는 서버 안에서 loopback으로 점검한다.

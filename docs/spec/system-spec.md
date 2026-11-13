@@ -18,7 +18,7 @@
               └──────────────┬─────────────────────┘
                              │ MCP (stdio)
               ┌──────────────▼─────────────────────┐
-              │  kquant MCP 서버 (공개 도구만)        │  catalog / screen / strategy_report / recommend
+              │  kquant MCP 서버 (공개 도구만)        │  list_fields / screen / strategy_options / strategy_report
               └──────────────┬─────────────────────┘
                              │ Python import (읽기 전용)
    ┌─────────────────────────▼─────────────────────────────────┐
@@ -62,7 +62,6 @@ Investor_agent/
 │  ├─ ingest/                # 외부 수집 (네트워크 경계)
 │  │  ├─ marcap.py           # GitHub raw parquet 동기화
 │  │  ├─ dart_bulk.py        # OpenDART 일괄 zip 목록/다운로드 + inbox 처리
-│  │  ├─ dart_api.py         # 유상증자, 공시목록, 기업개황 (API 키)
 │  │  └─ kind.py             # 배당 정보
 │  ├─ prices/adjust.py       # 수정종가 (§4)
 │  ├─ fin/                   # 재무: 파싱, 항목 매핑, 분기 정리, 지배주주 조정 (§5)
@@ -72,7 +71,6 @@ Investor_agent/
 │  ├─ strategies/            # value, salesmt, momentum + registry (§7)
 │  ├─ backtest/              # 엔진 + 그리드 + 증분 저장 (§8)
 │  ├─ reports/               # HTML 리포트 (§9)
-│  ├─ recommend.py           # 종목 추천 + 공시 첨부 (§10)
 │  ├─ cli.py                 # 운영자 CLI
 │  └─ mcp_server.py          # 공개 도구 어댑터
 ├─ hermes/                   # Hermes 배포 자산 (SOUL.md, config 예시) — 실제 키 없음
@@ -85,7 +83,7 @@ Investor_agent/
 ```
 
 - 데이터 디렉터리는 `KQUANT_DATA_DIR`(기본: `dataset/`)로 지정. git에는 서비스 환경에서 다시 만들 수 없는 새 산출물만 넣는다: `fin/long.parquet`, `fin/conflicts.parquet`, `fin/quality.parquet`, `prices/adj_events.parquet` (2026-11-07 결정). legacy 코드·legacy 비교 작업은 로컬 전용이다.
-- 비밀값: `DART_API_KEY`, `KRX_ID`, `KRX_PW` 등은 `.env`(gitignore) 또는 서버 secret.
+- 비밀값: `HERMES_API_KEY`(점검용), Hermes 프로필의 `API_SERVER_KEY` 등은 `.env`(gitignore) 또는 서버 secret.
 - 기존 코드의 하드코딩된 DART 키는 **첫 커밋 전에 제거**한다 (git 이력에 남으면 공개 시 노출).
 
 **[제안] 저장 = parquet + DuckDB.** 서버형 DB 없이 파일만으로 운영. 조건 검색은 DuckDB가 parquet을 직접 질의. 컨테이너 볼륨 하나로 이식 가능. 사용자가 많아지면 이후 Postgres로 옮길 수 있게 store 계층에서 추상화.
@@ -231,7 +229,7 @@ Investor_agent/
   - legacy의 유보율 조건(부채비율 정의 오류로 무력)과 **거래대금 하위 10% 제외는 쓰지 않는다.**
   - ~~이상 수익률 종목은 해당 리밸런싱 기간에서 제외한다(2026-11-06 결정)~~ → 2026-11-07 변경: 기준일 거래정지(거래량 0) 종목 제외로 대체, 보유 중 이상 수익률은 리포트에 참고 표시(§8). 시총 컷(규모)은 그리드 파라미터다.
 - legacy 동치성 비교는 로컬(`local/`)에서만 하며, 전략 정의가 달라졌으므로 서비스 전략의 성공 기준이 아니다.
-- **구현 (P4, 2026-11-07)**: `kquant.universe.build_universe`, `kquant.strategies`(`value`·`salesmt`·`momentum`, 레지스트리·조합 `base`), `kquant.strategies.select.select`(백테스트·추천 공통 선정 함수).
+- **구현 (P4, 2026-11-07)**: `kquant.universe.build_universe`, `kquant.strategies`(`value`·`salesmt`·`momentum`, 레지스트리·조합 `base`), `kquant.strategies.select.select`(백테스트 선정 함수).
   - 판단 기준일 `d` = 리밸런싱일 직전 거래일. 가격 단면·시가총액·재무 스냅샷·모멘텀 모두 `d` 기준이다.
   - 유니버스 세부(기본안): KOSPI·KOSDAQ만(KONEX 제외), 자본잠식 = 자본총계(비지배 포함) ≤ 자본금, 순이익 조건 = TTM 지배당기순이익 > 0, 최신 보고서가 `d`보다 15개월 넘게 오래되면 제외(보고 중단). 제외 사유를 모두 기록한다.
   - value: 지표 값이 없으면 그 지표에서 최하위 순위. 조합·전략의 동점은 종목코드 순.
@@ -246,7 +244,7 @@ Investor_agent/
 - 산출물: 그리드 키별 **일별 수익률 시계열** + 기간별 요약을 저장한다. 리포트의 연도 구간(`start_year`–`end_year`) 지표는 시계열에서 그때그때 계산한다.
 - **증분:** 종료된 리밸런싱 기간의 결과는 고정한다. 매일 재계산하는 것은 진행 중인 기간뿐이다. 재무 데이터나 전략 코드가 바뀌면 해당 그리드 키를 전체 재계산하며, 이는 코드·데이터 해시로 감지한다.
 - 그리드는 `src/kquant/backtest/grid.yaml`로 정의한다. **최종 그리드(2026-11-10 결정, 54키)**:
-  - 전략: value, salesmt, momentum **단일 전략만**(조합 없음, `combinations: false`). 추천(`recommend`)은 1–3개 조합 허용.
+  - 전략: value, salesmt, momentum **단일 전략만**(조합 없음, `combinations: false`). (추천 기능은 2026-11-13 삭제, §10)
   - 종목 수: 5/10/20
   - 규모: 전체 / 소형 = 시총 하위 30% / 대형 = 시총 상위 30%(백분위 ≥ 0.7)
   - 시총 하한: 없음
@@ -284,7 +282,13 @@ Investor_agent/
 
 ---
 
-## 10. 종목 추천 + 공시/기사 [결정 + 미결]
+## 10. 종목 추천 + 공시/기사 — **삭제 (2026-11-13)**
+
+- 결정(2026-11-13, 사용자): 에이전트는 조건 검색과 백테스트 리포트만 하고 종목을 추천하지 않는다. 공개 도구 `recommend`, `service.recommend`, CLI `kquant recommend`, 공시 조회 모듈 `kquant.ingest.dart_api`, CLI `kquant update-corp-codes`를 삭제했다. 공개 MCP 서버는 외부 네트워크를 쓰지 않으므로 compose `mcp` 서비스는 `network_mode: none`.
+- 대화 규칙(`hermes/SOUL.md` §3): 추천·선정 요청에는 도구 없이 "추천하지 않는다"고 답하고 조건 검색·리포트를 안내한다. 검색 결과·리포트를 추천·매수 의견처럼 표현하지 않는다.
+- 아래는 삭제 전 기록이다.
+
+### (삭제 전 기록)
 
 - 사용자가 고른 전략 설정으로 **최신 기준일** 스냅샷에 전략을 적용해 상위 N개를 반환한다.
 - 반환 항목: 기업명, 종목코드, 시장, 산업, 주요 지표, 전략 내 순위.
@@ -296,7 +300,7 @@ Investor_agent/
 ---
 
 ## 10.1 MCP 서버 + Hermes (구현, P7, 2026-11-07)
-- `kquant.mcp_server`(mcp SDK 2.x `MCPServer`, stdio, 실행 `uv run kquant-mcp`): 공개 도구 5개 `list_fields`, `screen`, `strategy_options`, `strategy_report`, `recommend` — 모두 `readOnlyHint`. 서버 `instructions`에 대화 규칙(카탈로그 먼저, 되묻기, 수량·신호 금지, 고지)을 넣었다.
+- `kquant.mcp_server`(mcp SDK 2.x `MCPServer`, stdio, 실행 `uv run kquant-mcp`): 공개 도구 4개 `list_fields`, `screen`, `strategy_options`, `strategy_report` — 모두 `readOnlyHint`(2026-11-13 `recommend` 삭제). 서버 `instructions`에 대화 규칙(카탈로그 먼저, 되묻기, 수량·신호 금지, 고지)을 넣었다.
 - Claude Code: 저장소 루트 `.mcp.json`으로 같은 서버를 붙인다. 자동 E2E `tests/integration/test_mcp_stdio.py`(실제 서버 프로세스 + MCP 클라이언트).
 - Hermes 자산 `hermes/`: `SOUL.md`(공개 프로필 대화 규칙, 2026-11-10 스킬에서 옮김), `config.example.yaml`(공개 프로필의 MCP 등록·`tools.include`·`platform_toolsets`·standalone, API 서버 .env 키. 운영 작업은 운영자 프로필 cron 또는 OS 스케줄러), `README.md`(배포 순서). 설정 키는 2026-11-10 Hermes v0.22.2에서 실제로 띄워 대조했다(§10.2 검증).
 - 레드팀 체크리스트 1번 자동화: `kquant check-hermes --url …` — `/v1/toolsets` 응답에서 허용 목록 밖 도구를 찾으면 실패(종료 코드 2).
@@ -344,7 +348,7 @@ Investor_agent/
 | P3 | 카탈로그 + 필터 DSL + 조건 검색 | 예시 질의 통과 + 주입 레드팀 |
 | P4 | 서비스 전략 3종(value·salesmt·momentum) + 공통 유니버스 | (1) 표본 종목의 지표·순위를 손으로 재계산해 일치 (2) 유니버스 규칙별 단위 테스트 (3) look-ahead 레드팀: as_of 이후 공시·가격을 쓰지 않음(재무값을 미래로 밀면 결과가 바뀌지 않아야 함) |
 | P5 | 백테스트 엔진 + 그리드 증분 | (1) 합성 데이터에서 손계산 수익률과 일치 (2) 회계 항등식: 매 거래일 보유평가액 + 현금 = 총액, 기간 이월 금액 연속 (3) 증분 결과 = 전체 재계산 결과 (4) 상폐 종목이 표본에 남아 있음(생존편향 점검) |
-| P6 | HTML 리포트 + 추천 + 공시 | 샘플 리포트 확인 |
+| P6 | HTML 리포트 (추천·공시는 2026-11-13 삭제) | 샘플 리포트 확인 |
 | P7 | MCP 서버 + Hermes skill + 공개 프로필 설정 + 보안 레드팀 | Claude Code·Hermes 양쪽에서 E2E |
 | P8 | Docker화 | Linux 컨테이너에서 전체 파이프라인 실행 |
 
@@ -356,5 +360,5 @@ Investor_agent/
 - ~~Q2. 마켓타이밍~~ → 해결(2026-11-06): 그리드에 포함하지 않는다.
 - ~~Q3. 기존 전략의 의도치 않은 동작~~ → 해결(2026-11-07): legacy 전략을 옮기지 않고 서비스 전략 3종을 새로 정의했다(§7). legacy 문제는 로컬 `local/docs/legacy-issues.md`에만 기록한다.
 - **Q4. 산업 분류 소스:** 현재 `Industry`는 FinanceDataReader 상장목록 기반이다(2026 초 장애 보고). 후보는 DART 기업개황(`induty_code`, 표준산업분류), KIND 상장법인목록, 배당 정보의 업종이다.
-- **Q5. 기사:** 네이버 API 약관 문제로 보류하고, 우선 공시만 제공할 것을 제안한다. 대안은 언론사 RSS(약관 개별 확인), 또는 링크만 반환하고 LLM에는 넘기지 않는 방식이다.
+- ~~Q5. 기사~~ → 해당 없음(2026-11-13 추천·공시 기능 삭제). 기록: 네이버 API 약관 문제로 보류하고, 우선 공시만 제공할 것을 제안한다. 대안은 언론사 RSS(약관 개별 확인), 또는 링크만 반환하고 LLM에는 넘기지 않는 방식이다.
 - **Q6. 서비스 유료화 여부:** 리포트 고지 문구와 네이버 등 외부 데이터 약관 판단에 영향을 준다.

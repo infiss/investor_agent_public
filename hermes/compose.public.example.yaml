@@ -27,7 +27,6 @@ services:
       KQUANT_DATA_DIR: /data
       KQUANT_REPORT_DIR: /reports
       # KQUANT_REPORT_BASE_URL: https://reports.example.com/kquant
-      DART_API_KEY: ${DART_API_KEY:-}  # 추천의 공시 조회. 비밀값은 compose 옆 .env(서버 secret)에서 치환
     volumes:
       - ../dataset:/data:ro
       - ../dataset/reports:/reports

@@ -27,8 +27,9 @@ def test_mcp_service_least_privilege():
     data = [v for v in svc["volumes"] if v.split(":")[1] == "/data"]
     assert data and all(v.endswith(":ro") for v in data)
     assert "env_file" not in svc and set(svc["environment"]) <= {"KQUANT_DATA_DIR", "KQUANT_REPORT_DIR",
-                                                                  "KQUANT_REPORT_BASE_URL", "DART_API_KEY"}
+                                                                  "KQUANT_REPORT_BASE_URL"}
     assert svc.get("read_only") is True and svc.get("cap_drop") == ["ALL"]
+    assert svc.get("network_mode") == "none"  # 공개 도구는 외부 네트워크가 필요 없다(2026-11-13)
     assert "no-new-privileges:true" in svc.get("security_opt", [])
 
 
@@ -45,7 +46,7 @@ def test_public_hermes_container_draft_conditions():
     assert data and all(v.endswith(":ro") for v in data)
     assert svc["ports"] == ["127.0.0.1:8643:8643"]
     assert svc.get("cap_drop") == ["ALL"] and "no-new-privileges:true" in svc.get("security_opt", [])
-    assert set(svc["environment"]) <= {"KQUANT_DATA_DIR", "KQUANT_REPORT_DIR", "KQUANT_REPORT_BASE_URL", "DART_API_KEY"}
+    assert set(svc["environment"]) <= {"KQUANT_DATA_DIR", "KQUANT_REPORT_DIR", "KQUANT_REPORT_BASE_URL"}
     dockerfile = (ROOT / "hermes" / "Dockerfile.public").read_text(encoding="utf-8")
     assert "docker.sock" not in dockerfile and "docker-ce" not in dockerfile and "docker.io" not in dockerfile
     cfg = yaml.safe_load((ROOT / "hermes" / "config.example.yaml").read_text(encoding="utf-8"))
@@ -62,4 +63,12 @@ def test_local_webui_binds_loopback_only():
         assert svc.get("network_mode") != "host", name
     assert svcs["open-webui"]["environment"]["OPENAI_API_KEY"].startswith("${HERMES_API_KEY")
     assert "@sha256:" in svcs["open-webui"]["image"]
+    # 2026-11-13: 도구 없이 답한 응답에도 고지가 보이도록 화면 상단 배너(dismissible=false: 닫아도 새로고침하면 다시 표시)에 같은 문구
+    import json
+
+    from kquant.disclaimer import DISCLAIMER
+
+    banners = json.loads(svcs["open-webui"]["environment"]["WEBUI_BANNERS"])
+    assert any(DISCLAIMER in b["content"] and b["dismissible"] is False for b in banners)
+    assert svcs["open-webui"]["environment"]["ENABLE_PERSISTENT_CONFIG"] == "false"  # DB의 빈 배너가 덮어쓰지 않게
     assert all(v.endswith(":ro") for v in svcs["reports"]["volumes"])

@@ -3,9 +3,8 @@
 모든 함수는 JSON 직렬화 가능한 dict를 돌려주고, 잘못된 입력에는 예외 대신 ``{"ok": False, "problem": …}``를 준다.
 최상위 키를 ``error``로 쓰지 않는다: Hermes는 응답 JSON에 ``error`` 키가 있으면 실패로 세고 3회 연속이면 MCP 서버를
 60초(프로세스 전역) 멈춘다. 되묻기·입력 오류가 다른 사용자의 사용을 막지 않게 ``problem``을 쓴다(2026-11-10 결정 D2).
-(추천의 ``disclosures.error``는 중첩 키라 해당 없음.)
 모든 응답에 ``disclaimer``가 붙는다. 쓰기 작업은 리포트 HTML 캐시 파일 생성뿐이다(데이터는 읽기 전용).
-매수 수량·매매 신호는 어떤 함수도 돌려주지 않는다.
+종목 추천·매수 수량·매매 신호는 어떤 함수도 돌려주지 않는다(2026-11-13: 추천 기능 삭제).
 """
 
 from __future__ import annotations
@@ -20,7 +19,6 @@ from pathlib import Path
 import pandas as pd
 
 from kquant.backtest.schedule import FIRST_YEAR
-from kquant.catalog.amount import AmountError, format_value, parse_number
 from kquant.catalog.catalog import list_fields
 from kquant.catalog.screen import screen as _screen
 from kquant.context import DataContext
@@ -32,7 +30,6 @@ SIZE_LABELS = {"all": "전체", "small": "소형주(시총 하위 30%)", "large"
 SCHEDULES = {"annual": "연 1회(사업보고서 제출 기한 3/31 이후 5거래일 여유를 두고 4월 초·중순)",
              "quarterly": "분기 1회(정기 보고서 제출 기한 3/31·5/15·8/14·11/14 이후 5거래일 여유)"}
 DEFAULTS = {"n": 10, "size": "all", "schedule": "annual"}
-RECOMMEND_MAX_N = 30
 
 
 class ParamError(Exception):
@@ -79,7 +76,7 @@ def strategy_options() -> dict:
         years={"first": FIRST_YEAR, "note": "start_year·end_year로 달력 연도 구간을 고릅니다(마지막 연도는 데이터 기준일까지)."},
         defaults=DEFAULTS,
         notes=["전략 리포트(strategy_report)는 전략 하나(strategy)를 고릅니다.",
-               "종목 추천(recommend)은 전략 1–3개를 고를 수 있고, 여러 개면 각 순위의 평균으로 합칩니다(교집합)."],
+               "리포트는 과거 백테스트 성과이며 종목 추천이 아닙니다."],
     )
 
 
@@ -96,30 +93,12 @@ def _year(v, name: str, last: int) -> int:
     return v
 
 
-def _strategies(v) -> tuple[str, ...]:
-    if isinstance(v, str):
-        v = [v]
-    if not isinstance(v, list) or not v or len(v) > 3 or not all(isinstance(s, str) and s in STRATEGIES for s in v):
-        raise ParamError("bad_strategies", "strategies는 value, salesmt, momentum 중 1–3개입니다", options=list(STRATEGIES))
-    return tuple(sorted(set(v)))
-
-
 def _size(params) -> tuple[str, float | None]:
     size = params.get("size", DEFAULTS["size"])
     if not isinstance(size, str) or size not in SIZES:
         raise ParamError("bad_size", "size는 all(전체), small(시총 하위 30%), large(시총 상위 30%) 중 하나입니다",
                          options=list(SIZES))
     return size, SIZES[size]
-
-
-def _min_marcap(v) -> float:
-    try:
-        x = parse_number(v if v is not None else 0, "KRW")
-    except AmountError as e:
-        raise ParamError("bad_min_marcap", f"min_marcap 오류: {e}") from None
-    if x < 0:
-        raise ParamError("bad_min_marcap", "min_marcap은 0 이상입니다")
-    return x
 
 
 def _check_keys(params, allowed: set):
@@ -250,57 +229,3 @@ def _round(d: dict) -> dict:
     return {k: _f(v) if isinstance(v, float) else v for k, v in d.items()}
 
 
-# ---- 종목 추천 ----
-
-def recommend(ctx: DataContext, params) -> dict:
-    """최신 기준일에 전략을 적용한 상위 N종목(+ 최근 공시). 매수 수량·매매 신호는 없다."""
-    from kquant.ingest.dart_api import load_corp_codes, recent_disclosures
-    from kquant.strategies.select import select
-    from kquant.universe import UniverseParams
-
-    try:
-        _check_keys(params, {"strategies", "n", "size", "min_marcap", "include_disclosures"})
-        strategies = _strategies(params.get("strategies"))
-        n = params.get("n", DEFAULTS["n"])
-        if isinstance(n, bool) or not isinstance(n, int) or not 1 <= n <= RECOMMEND_MAX_N:
-            raise ParamError("bad_n", f"n은 1–{RECOMMEND_MAX_N} 정수입니다")
-        size, cut = _size(params)
-        mc = _min_marcap(params.get("min_marcap", 0))
-        disc = params.get("include_disclosures", True)
-        if not isinstance(disc, bool):
-            raise ParamError("invalid_params", "include_disclosures는 true/false입니다")
-    except ParamError as e:
-        return e.payload
-
-    d = ctx.prices.latest_date()
-    sel = select(ctx, d + pd.Timedelta(days=1), list(strategies), n, UniverseParams(size, cut, mc or None),
-                 decision_date=d)
-    feats = ctx.features(d).set_index("symbol")
-    corp = load_corp_codes(ctx.paths) if disc else {}
-    rows = []
-    for p in sel.picks.itertuples():
-        f = feats.loc[p.symbol] if p.symbol in feats.index else None
-        row = {
-            "rank": int(p.rank), "symbol": p.symbol, "name": p.name, "market": p.market,
-            "industry": None,
-            "market_cap": None if _f(p.marcap) is None else int(p.marcap),
-            "fin_period_end": None if f is None or pd.isna(f["fin_period_end"]) else str(f["fin_period_end"].date()),
-            "metrics": {} if f is None else {
-                "per_ttm": _f(f["per.ttm"], 2), "pbr": _f(f["pbr.latest"], 2), "psr_ttm": _f(f["psr.ttm"], 2),
-                "pcr_ttm": _f(f["pcr.ttm"], 2), "roe_ttm_pct": _f(f["roe.ttm"], 2),
-                "operating_income_growth_q_pct": _f(f["operating_income_growth.quarter"], 2),
-            },
-            "strategy_ranks": {s: int(getattr(p, f"rank_{s}")) for s in strategies},
-        }
-        row["display"] = {"market_cap": format_value(row["market_cap"], "KRW"),
-                          **{k: format_value(v, "%" if k.endswith("_pct") else "배")
-                             for k, v in row["metrics"].items()}}
-        if disc:
-            cc = corp.get(p.symbol)
-            row["disclosures"] = recent_disclosures(cc) if cc else {"items": [], "error": "공시 고유번호 정보 없음"}
-        rows.append(row)
-    return _ok(as_of=str(d.date()), strategies=list(strategies), universe_size=sel.universe_size, picks=rows,
-               notes=["값을 사용자에게 보일 때는 각 종목 display의 문자열(예: 시가총액 '55.95조')을 그대로 쓰세요.",
-                      "순위는 기준일까지 공개된 재무·가격만으로 계산했습니다.",
-                      "산업 분류는 아직 제공하지 않습니다(데이터 소스 결정 대기).",
-                      "이 목록은 매수 수량이나 매매 시점을 제시하지 않습니다."])

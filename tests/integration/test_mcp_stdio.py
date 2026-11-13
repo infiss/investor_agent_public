@@ -36,14 +36,13 @@ def test_stdio_end_to_end(real_ctx, tmp_path, monkeypatch):
         bad = _text(await s.call_tool("screen", {"where": [{"field": "revenue", "op": ">", "value": "1조"}]}))
         good = _text(await s.call_tool("screen", {"where": [{"field": "revenue", "period": "ttm", "op": ">",
                                                              "value": "10조"}], "limit": 3}))
-        rec = _text(await s.call_tool("recommend", {"strategies": ["value"], "n": 2, "include_disclosures": False}))
-        return names, cat, bad, good, rec
+        return names, cat, bad, good
 
-    names, cat, bad, good, rec = anyio.run(_session_run, scenario)
+    names, cat, bad, good = anyio.run(_session_run, scenario)
     assert names == sorted(PUBLIC_TOOLS)
     assert cat["ok"] and len(cat["fields"]) > 30
     assert bad["ok"] is False and bad["problem"]["code"] == "period_required"
     assert good["ok"] and good["returned"] == 3
-    assert rec["ok"] and len(rec["picks"]) == 2
-    for r in (cat, bad, good, rec):
+    assert "recommend" not in names
+    for r in (cat, bad, good):
         assert "투자 권유가 아닙니다" in r["disclaimer"]

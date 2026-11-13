@@ -21,7 +21,7 @@ mcp_servers:
     connect_timeout: 120
     timeout: 180
     tools:
-      include: [list_fields, screen, strategy_options, strategy_report, recommend]
+      include: [list_fields, screen, strategy_options, strategy_report]
       resources: false
       prompts: false
 
@@ -45,7 +45,6 @@ memory:
 #   API_SERVER_HOST=127.0.0.1      # 호스트 직접 실행 시. 컨테이너 안에서는 0.0.0.0으로 두고 호스트 쪽 공개를 127.0.0.1:8643으로 제한
 #   API_SERVER_PORT=8643           # 공개 프로필 고정 포트(8642는 운영 프로필). check-hermes 기본값과 같다
 #   API_SERVER_KEY=<임의의 긴 값>   # check-hermes는 HERMES_API_KEY 환경변수로 이 값을 쓴다
-# compose `mcp` 서비스의 DART_API_KEY는 저장소 옆 .env에서 읽는다(Hermes 설정에 넣지 않는다).
 
 # 공개 채널 주의(spec §1):
 #   - Telegram은 기본이 미등록 사용자 거부. TELEGRAM_ALLOW_ALL_USERS는 이 공개 프로필에서만 켠다.
